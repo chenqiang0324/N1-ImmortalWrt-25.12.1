@@ -8,51 +8,32 @@ permissions:
 
 env:
   IMMORTALWRT_VERSION: "v25.12.1"
-
-  # ==================================================
-  # N1 network
-  # ==================================================
   LAN_IP: "10.0.0.254"
   LAN_NETMASK: "255.255.255.0"
-
-  # ==================================================
-  # N1 / Phicomm N1
-  # ==================================================
   N1_BOARD: "s905d"
-
-  # ==================================================
-  # Kernel
-  #
-  # ImmortalWrt 25.12.1 build kernel:
-  # 6.12.x
-  #
-  # Final N1 kernel:
-  # stable 6.12.y
-  # ==================================================
-  N1_KERNEL: "6.12.y"
-
+  KERNEL_BRANCH: "6.12.y"
 
 jobs:
 
   build:
 
-    name: N1 / S905D / ImmortalWrt 25.12.1
+    name: N1 S905D ImmortalWrt 25.12.1
 
     runs-on: ubuntu-24.04
 
     steps:
 
-      # ==================================================
+      # ==========================================================
       # 1. Checkout
-      # ==================================================
+      # ==========================================================
 
       - name: Checkout
         uses: actions/checkout@v4
 
 
-      # ==================================================
+      # ==========================================================
       # 2. Free disk
-      # ==================================================
+      # ==========================================================
 
       - name: Free disk space
         run: |
@@ -65,9 +46,9 @@ jobs:
           df -h
 
 
-      # ==================================================
-      # 3. Build dependencies
-      # ==================================================
+      # ==========================================================
+      # 3. Install build dependencies
+      # ==========================================================
 
       - name: Install build dependencies
         run: |
@@ -102,9 +83,9 @@ jobs:
             diffutils
 
 
-      # ==================================================
-      # 4. Clone ImmortalWrt
-      # ==================================================
+      # ==========================================================
+      # 4. Clone ImmortalWrt 25.12.1
+      # ==========================================================
 
       - name: Clone ImmortalWrt
         run: |
@@ -118,20 +99,17 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "======================================"
-          echo "ImmortalWrt"
-          echo "======================================"
+          echo "=========================================="
+          echo "ImmortalWrt version"
+          echo "=========================================="
 
           git describe --tags --always
-
-          echo
-          echo "Commit:"
           git rev-parse HEAD
 
 
-      # ==================================================
-      # 5. Add third-party feeds
-      # ==================================================
+      # ==========================================================
+      # 5. Add third-party package repositories
+      # ==========================================================
 
       - name: Add third party feeds
         run: |
@@ -141,19 +119,10 @@ jobs:
           mkdir -p package/third-party
 
 
-          # ==================================================
-          # sbwml extra packages
-          #
-          # Contains:
-          #   DAED
-          #   luci-app-daed
-          #   PassWall
-          #   PassWall2
-          # ==================================================
-
-          echo "======================================"
-          echo "Adding sbwml/openwrt_helloworld"
-          echo "======================================"
+          echo
+          echo "=========================================="
+          echo "Adding sbwml helloworld"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -161,18 +130,10 @@ jobs:
             package/third-party/helloworld
 
 
-      # ==================================================
-      # 6. Add Lucky
-      # ==================================================
-
-      - name: Add Lucky
-        run: |
-
-          cd immortalwrt
-
-          echo "======================================"
+          echo
+          echo "=========================================="
           echo "Adding Lucky"
-          echo "======================================"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -180,18 +141,10 @@ jobs:
             package/third-party/lucky
 
 
-      # ==================================================
-      # 7. Add QuickFile
-      # ==================================================
-
-      - name: Add QuickFile
-        run: |
-
-          cd immortalwrt
-
-          echo "======================================"
+          echo
+          echo "=========================================="
           echo "Adding QuickFile"
-          echo "======================================"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -199,18 +152,10 @@ jobs:
             package/third-party/quickfile
 
 
-      # ==================================================
-      # 8. Add Amlogic Treasure Box
-      # ==================================================
-
-      - name: Add Amlogic Treasure Box
-        run: |
-
-          cd immortalwrt
-
-          echo "======================================"
-          echo "Adding Amlogic Treasure Box"
-          echo "======================================"
+          echo
+          echo "=========================================="
+          echo "Adding Amlogic package"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -218,25 +163,10 @@ jobs:
             package/third-party/luci-app-amlogic
 
 
-      # ==================================================
-      # 9. Add LinkEase / iStore
-      #
-      # IMPORTANT:
-      #
-      # Do NOT copy only luci-app-linkease.
-      #
-      # The official LinkEase iStore repository is used
-      # instead of the old incomplete small-package copy.
-      # ==================================================
-
-      - name: Add LinkEase iStore
-        run: |
-
-          cd immortalwrt
-
-          echo "======================================"
+          echo
+          echo "=========================================="
           echo "Adding LinkEase iStore"
-          echo "======================================"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -244,9 +174,9 @@ jobs:
             package/third-party/istore
 
 
-      # ==================================================
-      # 10. Update feeds
-      # ==================================================
+      # ==========================================================
+      # 6. Update feeds
+      # ==========================================================
 
       - name: Update feeds
         run: |
@@ -258,35 +188,60 @@ jobs:
           ./scripts/feeds install -a
 
 
-      # ==================================================
-      # 11. Package discovery
-      # ==================================================
+      # ==========================================================
+      # 7. Inspect requested packages
+      # ==========================================================
 
-      - name: Inspect packages
+      - name: Inspect requested packages
         run: |
 
           cd immortalwrt
 
           echo
-          echo "======================================"
-          echo "Searching requested packages"
-          echo "======================================"
+          echo "=========================================="
+          echo "Requested package inspection"
+          echo "=========================================="
 
 
-          find package feeds \
-            -type f \
-            -name Makefile \
-            -print \
-            2>/dev/null \
-            | grep -E \
-              '(daed|passwall2|lucky|quickfile|amlogic|istore|tailscale|ttyd|minidlna|vlmcsd|upnp)' \
-            | head -200 \
-            || true
+          for p in \
+            daed \
+            luci-app-daed \
+            luci-app-passwall2 \
+            lucky \
+            luci-app-lucky \
+            luci-app-quickfile \
+            luci-app-store \
+            luci-app-amlogic \
+            tailscale \
+            luci-app-tailscale-community \
+            minidlna \
+            luci-app-minidlna \
+            ttyd \
+            luci-app-ttyd \
+            vlmcsd \
+            luci-app-vlmcsd \
+            luci-app-upnp
+          do
+
+            echo
+            echo "----- ${p} -----"
+
+            find package feeds \
+              -type f \
+              -name Makefile \
+              -exec grep -l \
+              "PKG_NAME.*${p}\|Package/${p}" \
+              {} \; \
+              2>/dev/null \
+              | head -10 \
+              || true
+
+          done
 
 
-      # ==================================================
-      # 12. Create OpenWrt configuration
-      # ==================================================
+      # ==========================================================
+      # 8. Create base OpenWrt configuration
+      # ==========================================================
 
       - name: Create OpenWrt configuration
         run: |
@@ -295,172 +250,158 @@ jobs:
 
           cat > .config <<'EOF'
 
-          # ==================================================
+          #
           # Target
-          # ==================================================
+          #
 
           CONFIG_TARGET_armsr=y
           CONFIG_TARGET_armsr_armv8=y
           CONFIG_TARGET_armsr_armv8_DEVICE_generic=y
 
+
+          #
+          # Root filesystem
+          #
+
           CONFIG_TARGET_ROOTFS_TARGZ=y
 
 
-          # ==================================================
+          #
           # LuCI
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_luci=y
-
           CONFIG_PACKAGE_luci-base=y
-
           CONFIG_PACKAGE_luci-mod-admin-full=y
-
           CONFIG_PACKAGE_luci-theme-bootstrap=y
-
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
 
 
-          # ==================================================
-          # Firewall / nftables
-          # ==================================================
+          #
+          # Firewall
+          #
 
           CONFIG_PACKAGE_firewall4=y
-
           CONFIG_PACKAGE_nftables=y
-
           CONFIG_PACKAGE_ip-full=y
 
 
-          # ==================================================
+          #
           # DAED
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_daed=y
-
           CONFIG_PACKAGE_luci-app-daed=y
 
 
-          # ==================================================
+          #
           # PassWall2
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_luci-app-passwall2=y
 
 
-          # ==================================================
+          #
           # Lucky
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_lucky=y
-
           CONFIG_PACKAGE_luci-app-lucky=y
 
 
-          # ==================================================
+          #
           # QuickFile
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_luci-app-quickfile=y
 
 
-          # ==================================================
+          #
           # LinkEase / iStore
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_luci-app-store=y
 
 
-          # ==================================================
+          #
           # Amlogic Treasure Box
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_luci-app-amlogic=y
 
 
-          # ==================================================
+          #
           # Tailscale
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_tailscale=y
-
           CONFIG_PACKAGE_luci-app-tailscale-community=y
 
 
-          # ==================================================
+          #
           # MiniDLNA
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_minidlna=y
-
           CONFIG_PACKAGE_luci-app-minidlna=y
 
 
-          # ==================================================
+          #
           # TTYD
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_ttyd=y
-
           CONFIG_PACKAGE_luci-app-ttyd=y
 
 
-          # ==================================================
+          #
           # VLMCSD
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_vlmcsd=y
-
           CONFIG_PACKAGE_luci-app-vlmcsd=y
 
 
-          # ==================================================
+          #
           # UPnP
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_miniupnpd-nftables=y
-
           CONFIG_PACKAGE_luci-app-upnp=y
 
 
-          # ==================================================
+          #
           # USB
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_kmod-usb-storage=y
-
           CONFIG_PACKAGE_usbutils=y
 
 
-          # ==================================================
+          #
           # Filesystems
-          # ==================================================
+          #
 
           CONFIG_PACKAGE_kmod-fs-ext4=y
-
           CONFIG_PACKAGE_kmod-fs-vfat=y
-
           CONFIG_PACKAGE_kmod-fs-exfat=y
-
           CONFIG_PACKAGE_block-mount=y
 
 
-          # ==================================================
-          # Tools
-          # ==================================================
+          #
+          # Utilities
+          #
 
           CONFIG_PACKAGE_curl=y
-
           CONFIG_PACKAGE_wget-ssl=y
-
           CONFIG_PACKAGE_htop=y
 
           EOF
 
 
-      # ==================================================
-      # 13. Resolve dependencies
-      # ==================================================
+      # ==========================================================
+      # 9. Run OpenWrt defconfig
+      # ==========================================================
 
       - name: Resolve package dependencies
         run: |
@@ -468,41 +409,75 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "======================================"
+          echo "=========================================="
           echo "Running make defconfig"
-          echo "======================================"
+          echo "=========================================="
 
           make defconfig V=s
 
 
-      # ==================================================
-      # 14. Verify requested packages
-      # ==================================================
+      # ==========================================================
+      # 10. Verify selected packages
+      # ==========================================================
 
-      - name: Verify package selection
+      - name: Verify selected packages
         run: |
 
           cd immortalwrt
 
           echo
-          echo "======================================"
-          echo "Final package selection"
-          echo "======================================"
-
-          grep -E \
-            '^CONFIG_PACKAGE_' \
-            .config \
-            | grep -E \
-              '(daed|luci-app-daed|passwall2|lucky|quickfile|luci-app-store|amlogic|tailscale|ttyd|minidlna|vlmcsd|upnp|usb-storage|fs-ext4|fs-vfat|fs-exfat|block-mount|usbutils|curl|wget-ssl|htop)' \
-            | sort \
-            || true
+          echo "=========================================="
+          echo "Selected packages"
+          echo "=========================================="
 
 
-      # ==================================================
-      # 15. Configure LAN
-      # ==================================================
+          for p in \
+            daed \
+            luci-app-daed \
+            luci-app-passwall2 \
+            lucky \
+            luci-app-lucky \
+            luci-app-quickfile \
+            luci-app-store \
+            luci-app-amlogic \
+            tailscale \
+            luci-app-tailscale-community \
+            minidlna \
+            luci-app-minidlna \
+            ttyd \
+            luci-app-ttyd \
+            vlmcsd \
+            luci-app-vlmcsd \
+            luci-app-upnp \
+            kmod-usb-storage \
+            kmod-fs-ext4 \
+            kmod-fs-vfat \
+            kmod-fs-exfat \
+            block-mount \
+            usbutils \
+            curl \
+            wget-ssl \
+            htop
+          do
 
-      - name: Configure LAN IP
+            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then
+
+              echo "[ OK ] ${p}"
+
+            else
+
+              echo "[FAIL] ${p}"
+
+            fi
+
+          done
+
+
+      # ==========================================================
+      # 11. Configure LAN IP
+      # ==========================================================
+
+      - name: Configure LAN
         run: |
 
           cd immortalwrt
@@ -523,9 +498,9 @@ jobs:
           chmod +x files/etc/uci-defaults/99-n1-network
 
 
-      # ==================================================
-      # 16. Prepare Linux kernel
-      # ==================================================
+      # ==========================================================
+      # 12. Prepare Linux kernel
+      # ==========================================================
 
       - name: Prepare Linux kernel
         run: |
@@ -533,15 +508,14 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "======================================"
+          echo "=========================================="
           echo "Preparing Linux kernel"
-          echo "======================================"
+          echo "=========================================="
 
           make target/linux/prepare V=s
 
-
           echo
-          echo "Kernel directories:"
+          echo "Kernel source directories:"
 
           find build_dir \
             -maxdepth 6 \
@@ -550,19 +524,34 @@ jobs:
             -print
 
 
-      # ==================================================
-      # 17. Generate kernel configuration
+      # ==========================================================
+      # 13. Generate kernel configuration
       #
       # IMPORTANT:
       #
-      # There is NO:
+      # Do NOT use:
       #
       # make target/linux/oldconfig
       #
-      # because that target does not exist.
-      #
-      # defconfig already generated above.
-      # ==================================================
+      # This target does not exist.
+      # ==========================================================
+
+      - name: Generate kernel configuration
+        run: |
+
+          cd immortalwrt
+
+          echo
+          echo "=========================================="
+          echo "Generating Linux kernel configuration"
+          echo "=========================================="
+
+          make target/linux/config V=s
+
+
+      # ==========================================================
+      # 14. Locate kernel configuration
+      # ==========================================================
 
       - name: Locate kernel configuration
         run: |
@@ -570,9 +559,10 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "======================================"
+          echo "=========================================="
           echo "Locating kernel configuration"
-          echo "======================================"
+          echo "=========================================="
+
 
           KERNEL_CONFIG=$(find build_dir \
             -type f \
@@ -580,6 +570,7 @@ jobs:
             | head -1)
 
 
+          echo
           echo "Kernel config:"
           echo "${KERNEL_CONFIG}"
 
@@ -590,11 +581,11 @@ jobs:
             echo "ERROR: kernel configuration not found"
 
             echo
-            echo "Available kernel directories:"
+            echo "All .config files:"
 
             find build_dir \
-              -type d \
-              -name 'linux-*' \
+              -type f \
+              -name '.config' \
               -print
 
             exit 1
@@ -605,9 +596,9 @@ jobs:
           echo "${KERNEL_CONFIG}" > /tmp/kernel_config_path
 
 
-      # ==================================================
-      # 18. Configure DAED kernel support
-      # ==================================================
+      # ==========================================================
+      # 15. Configure DAED kernel support
+      # ==========================================================
 
       - name: Configure DAED eBPF and BTF
         run: |
@@ -618,38 +609,39 @@ jobs:
 
 
           echo
-          echo "======================================"
-          echo "DAED kernel configuration"
-          echo "======================================"
+          echo "=========================================="
+          echo "Configuring DAED kernel support"
+          echo "=========================================="
 
-          echo "Using:"
+          echo "Kernel config:"
           echo "${KERNEL_CONFIG}"
 
 
           ./scripts/config --file "${KERNEL_CONFIG}" \
-            --enable BPF \
-            --enable BPF_SYSCALL \
-            --enable BPF_JIT \
-            --enable BPF_EVENTS \
-            --enable BPF_STREAM_PARSER \
-            --enable CGROUPS \
-            --enable KPROBES \
-            --enable KPROBE_EVENTS \
-            --enable NET_INGRESS \
-            --enable NET_EGRESS \
-            --enable NET_CLS_ACT \
-            --module NET_CLS_BPF \
-            --module NET_SCH_INGRESS \
-            --enable DEBUG_INFO \
-            --disable DEBUG_INFO_REDUCED \
-            --enable DEBUG_INFO_BTF \
-            --enable DEBUG_INFO_BTF_MODULES
+            --enable CONFIG_BPF \
+            --enable CONFIG_BPF_SYSCALL \
+            --enable CONFIG_BPF_JIT \
+            --enable CONFIG_BPF_EVENTS \
+            --enable CONFIG_BPF_STREAM_PARSER \
+            --enable CONFIG_CGROUPS \
+            --enable CONFIG_KPROBES \
+            --enable CONFIG_KPROBE_EVENTS \
+            --enable CONFIG_NET_INGRESS \
+            --enable CONFIG_NET_EGRESS \
+            --enable CONFIG_NET_CLS_ACT \
+            --module CONFIG_NET_CLS_BPF \
+            --module CONFIG_NET_SCH_INGRESS \
+            --enable CONFIG_DEBUG_INFO \
+            --disable CONFIG_DEBUG_INFO_REDUCED \
+            --enable CONFIG_DEBUG_INFO_BTF \
+            --enable CONFIG_DEBUG_INFO_BTF_MODULES
 
 
           echo
-          echo "======================================"
-          echo "DAED kernel configuration result"
-          echo "======================================"
+          echo "=========================================="
+          echo "DAED kernel configuration"
+          echo "=========================================="
+
 
           grep -E \
             'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO|DEBUG_INFO_BTF|DEBUG_INFO_BTF_MODULES)=' \
@@ -657,9 +649,26 @@ jobs:
             || true
 
 
-      # ==================================================
-      # 19. Verify DAED kernel support
-      # ==================================================
+      # ==========================================================
+      # 16. Re-run kernel config after modification
+      # ==========================================================
+
+      - name: Refresh kernel configuration
+        run: |
+
+          cd immortalwrt
+
+          echo
+          echo "=========================================="
+          echo "Refreshing kernel configuration"
+          echo "=========================================="
+
+          make target/linux/refresh V=s
+
+
+      # ==========================================================
+      # 17. Verify DAED kernel support
+      # ==========================================================
 
       - name: Verify DAED kernel support
         run: |
@@ -667,6 +676,12 @@ jobs:
           cd immortalwrt
 
           KERNEL_CONFIG=$(cat /tmp/kernel_config_path)
+
+          echo
+          echo "=========================================="
+          echo "Verifying DAED kernel support"
+          echo "=========================================="
+
 
           FAILED=0
 
@@ -689,44 +704,20 @@ jobs:
           }
 
 
-          echo
-          echo "======================================"
-          echo "Checking DAED eBPF / BTF"
-          echo "======================================"
-
-
           check_config "CONFIG_BPF=y"
-
           check_config "CONFIG_BPF_SYSCALL=y"
-
           check_config "CONFIG_BPF_JIT=y"
-
           check_config "CONFIG_BPF_EVENTS=y"
-
           check_config "CONFIG_BPF_STREAM_PARSER=y"
-
           check_config "CONFIG_CGROUPS=y"
-
           check_config "CONFIG_KPROBES=y"
-
           check_config "CONFIG_KPROBE_EVENTS=y"
-
           check_config "CONFIG_NET_INGRESS=y"
-
           check_config "CONFIG_NET_EGRESS=y"
-
           check_config "CONFIG_NET_CLS_ACT=y"
 
-          check_config "CONFIG_NET_CLS_BPF=m"
 
-          check_config "CONFIG_NET_SCH_INGRESS=m"
-
-          check_config "CONFIG_DEBUG_INFO=y"
-
-          check_config "CONFIG_DEBUG_INFO_BTF=y"
-
-
-          if grep -q '^CONFIG_DEBUG_INFO_REDUCED=y' "${KERNEL_CONFIG}"; then
+          if grep -q "^CONFIG_DEBUG_INFO_REDUCED=y" "${KERNEL_CONFIG}"; then
 
             echo "[FAIL] CONFIG_DEBUG_INFO_REDUCED=y"
 
@@ -739,12 +730,16 @@ jobs:
           fi
 
 
+          check_config "CONFIG_DEBUG_INFO=y"
+          check_config "CONFIG_DEBUG_INFO_BTF=y"
+
+
           if [ "${FAILED}" -ne 0 ]; then
 
             echo
-            echo "======================================"
+            echo "=========================================="
             echo "DAED kernel verification FAILED"
-            echo "======================================"
+            echo "=========================================="
 
             exit 1
 
@@ -752,14 +747,14 @@ jobs:
 
 
           echo
-          echo "======================================"
+          echo "=========================================="
           echo "DAED kernel verification PASSED"
-          echo "======================================"
+          echo "=========================================="
 
 
-      # ==================================================
-      # 20. Build ImmortalWrt
-      # ==================================================
+      # ==========================================================
+      # 18. Build ImmortalWrt
+      # ==========================================================
 
       - name: Build ImmortalWrt
         run: |
@@ -767,126 +762,37 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "======================================"
+          echo "=========================================="
           echo "Building ImmortalWrt"
-          echo "======================================"
+          echo "=========================================="
 
           make -j2 V=s
 
 
-      # ==================================================
-      # 21. Find rootfs
-      # ==================================================
-
-      - name: Find rootfs
-        run: |
-
-          cd immortalwrt
-
-          echo
-          echo "======================================"
-          echo "Searching rootfs"
-          echo "======================================"
-
-          find bin/targets \
-            -type f \
-            -name '*rootfs.tar.gz' \
-            -print
-
-
-      # ==================================================
-      # 22. Prepare rootfs
-      # ==================================================
-
-      - name: Prepare N1 rootfs
-        run: |
-
-          mkdir -p rootfs
-
-
-          ROOTFS=$(find immortalwrt/bin/targets \
-            -type f \
-            -name '*rootfs.tar.gz' \
-            | head -1)
-
-
-          if [ -z "${ROOTFS}" ]; then
-
-            echo "ERROR: rootfs.tar.gz not found"
-
-            exit 1
-
-          fi
-
-
-          echo
-          echo "Using rootfs:"
-          echo "${ROOTFS}"
-
-
-          cp "${ROOTFS}" \
-            rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
-
-
-          ls -lh rootfs/
-
-
-      # ==================================================
-      # 23. Package N1 / S905D
-      #
-      # Final kernel:
-      # stable 6.12.y
-      # ==================================================
-
-      - name: Package Phicomm N1
-        uses: ophub/amlogic-s9xxx-openwrt@main
-
-        with:
-
-          openwrt_path: rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
-
-          openwrt_board: s905d
-
-          kernel_repo: ophub/kernel
-
-          kernel_usage: stable
-
-          openwrt_kernel: 6.12.y
-
-          auto_kernel: true
-
-          openwrt_ip: 10.0.0.254
-
-          openwrt_size: 512/2048
-
-          builder_name: ImmortalWrt-25.12.1-N1
-
-
-      # ==================================================
-      # 24. Show output
-      # ==================================================
+      # ==========================================================
+      # 19. Show firmware
+      # ==========================================================
 
       - name: Show firmware
         run: |
 
           echo
-          echo "======================================"
-          echo "N1 FIRMWARE OUTPUT"
-          echo "======================================"
+          echo "=========================================="
+          echo "Firmware output"
+          echo "=========================================="
 
-          find out \
-            -maxdepth 3 \
+          find immortalwrt/bin/targets \
             -type f \
             -print \
             2>/dev/null \
-            || true
+            | sort
 
 
-      # ==================================================
-      # 25. Upload artifact
-      # ==================================================
+      # ==========================================================
+      # 20. Upload ImmortalWrt firmware
+      # ==========================================================
 
-      - name: Upload N1 firmware
+      - name: Upload ImmortalWrt firmware
         uses: actions/upload-artifact@v4
 
         with:
@@ -895,9 +801,7 @@ jobs:
 
           path: |
 
-            out/**
-
-            rootfs/**
+            immortalwrt/bin/targets/**
 
           if-no-files-found: error
 
