@@ -8,37 +8,62 @@ permissions:
 
 env:
   IMMORTALWRT_VERSION: "v25.12.1"
-  LAN_IP: "192.168.1.1"
+
+  # ==================================================
+  # N1 LAN IP
+  # ==================================================
+  LAN_IP: "10.0.0.254"
+
+  # ==================================================
+  # N1 / Amlogic
+  # ==================================================
+  N1_BOARD: "s905d"
+
+  # ==================================================
+  # Stable Linux kernel
+  # ==================================================
+  N1_KERNEL: "6.12.y"
 
 jobs:
+
   build:
-    name: Build N1 / S905D
+
+    name: Build N1 / S905D / ImmortalWrt 25.12.1
+
     runs-on: ubuntu-24.04
 
     steps:
 
       # ==================================================
-      # 1. 获取你的 GitHub 工程
+      # 1. Checkout GitHub repository
       # ==================================================
+
       - name: Checkout
         uses: actions/checkout@v4
 
+
       # ==================================================
-      # 2. 清理 GitHub Actions 空间
+      # 2. Free disk space
       # ==================================================
+
       - name: Free disk space
         run: |
+
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/powershell
+
           df -h
 
+
       # ==================================================
-      # 3. 安装编译工具
+      # 3. Install build dependencies
       # ==================================================
+
       - name: Install build dependencies
         run: |
+
           sudo apt-get update
 
           sudo apt-get install -y \
@@ -64,13 +89,18 @@ jobs:
             zstd \
             ccache \
             swig \
-            time
+            time \
+            patch \
+            diffutils
+
 
       # ==================================================
-      # 4. 下载 ImmortalWrt 25.12.1
+      # 4. Clone ImmortalWrt 25.12.1
       # ==================================================
+
       - name: Clone ImmortalWrt
         run: |
+
           git clone \
             --depth=1 \
             --branch="${IMMORTALWRT_VERSION}" \
@@ -79,97 +109,246 @@ jobs:
 
           cd immortalwrt
 
-          echo "ImmortalWrt commit:"
+          echo
+          echo "======================================"
+          echo "ImmortalWrt version"
+          echo "======================================"
+
+          git describe --tags --always
+
+          echo
+          echo "Commit:"
           git rev-parse HEAD
 
+
       # ==================================================
-      # 5. 加入第三方软件包
+      # 5. Add third-party package repositories
       # ==================================================
-      - name: Add third party feeds
+
+      - name: Add third party packages
         run: |
+
           cd immortalwrt
 
           mkdir -p package/third-party
 
-          echo "Adding DAED / PassWall2..."
+
+          # ==================================================
+          # DAED / PassWall2
+          # ==================================================
+
+          echo "======================================"
+          echo "Adding sbwml/openwrt_helloworld"
+          echo "======================================"
 
           git clone \
             --depth=1 \
             https://github.com/sbwml/openwrt_helloworld.git \
             package/third-party/helloworld
 
-          echo "Adding Lucky..."
+
+          # ==================================================
+          # Lucky
+          # ==================================================
+
+          echo "======================================"
+          echo "Adding Lucky"
+          echo "======================================"
 
           git clone \
             --depth=1 \
             https://github.com/sirpdboy/luci-app-lucky.git \
             package/third-party/lucky
 
-          echo "Adding QuickFile..."
+
+          # ==================================================
+          # QuickFile
+          # ==================================================
+
+          echo "======================================"
+          echo "Adding QuickFile"
+          echo "======================================"
 
           git clone \
             --depth=1 \
             https://github.com/sbwml/luci-app-quickfile.git \
             package/third-party/quickfile
 
-          echo "Adding Amlogic Treasure Box..."
+
+          # ==================================================
+          # Amlogic Treasure Box
+          # ==================================================
+
+          echo "======================================"
+          echo "Adding Amlogic Treasure Box"
+          echo "======================================"
 
           git clone \
             --depth=1 \
             https://github.com/ophub/luci-app-amlogic.git \
             package/third-party/luci-app-amlogic
 
-          echo "Adding LinkEase..."
+
+          # ==================================================
+          # LinkEase
+          #
+          # 不再整个拉 kenzok8/small-package
+          # 避免大量无关插件产生 dependency warning
+          # ==================================================
+
+          echo "======================================"
+          echo "Adding LinkEase"
+          echo "======================================"
+
+          mkdir -p package/third-party/linkease
 
           git clone \
             --depth=1 \
+            --filter=blob:none \
+            --sparse \
             https://github.com/kenzok8/small-package.git \
-            package/third-party/small-package
+            /tmp/small-package
+
+          cd /tmp/small-package
+
+          git sparse-checkout set luci-app-linkease
+
+          cd -
+
+          cp -a \
+            /tmp/small-package/luci-app-linkease \
+            package/third-party/linkease/
+
 
       # ==================================================
-      # 6. 更新 OpenWrt feeds
+      # 6. Update feeds
       # ==================================================
+
       - name: Update feeds
         run: |
+
           cd immortalwrt
 
           ./scripts/feeds update -a
+
           ./scripts/feeds install -a
 
+
       # ==================================================
-      # 7. 显示实际找到的插件
+      # 7. Check requested packages
       # ==================================================
-      - name: Check packages
+
+      - name: Check requested packages
         run: |
+
           cd immortalwrt
 
+          echo
           echo "======================================"
           echo "Checking requested packages"
           echo "======================================"
 
-          for pkg in \
-            luci-app-daed \
-            luci-app-passwall2 \
-            luci-app-lucky \
-            luci-app-quickfile \
-            luci-app-amlogic \
-            luci-app-linkease
-          do
+          check_package()
+          {
+            PKG="$1"
+
             echo
-            echo "========== ${pkg} =========="
+            echo "--------------------------------------"
+            echo "Checking: ${PKG}"
+            echo "--------------------------------------"
 
-            grep -R \
-              "define Package/${pkg}" \
-              package feeds \
+            if find package feeds \
+              -type f \
+              \( -name Makefile -o -name '*.mk' \) \
+              -print0 2>/dev/null \
+              | xargs -0 grep -l \
+              "define Package/${PKG}" \
               2>/dev/null \
-              | head -10 || true
-          done
+              | head -5 \
+              | grep -q .
+            then
+              echo "[ OK ] ${PKG}"
+            else
+              echo "[WARN] ${PKG} not found"
+            fi
+          }
+
+
+          check_package luci-app-daed
+          check_package daed
+
+          check_package luci-app-passwall2
+
+          check_package luci-app-lucky
+          check_package lucky
+
+          check_package luci-app-quickfile
+          check_package quickfile
+
+          check_package luci-app-linkease
+
+          check_package luci-app-amlogic
+
+          check_package luci-app-minidlna
+          check_package minidlna
+
+          check_package luci-app-tailscale-community
+          check_package tailscale
+
+          check_package luci-app-ttyd
+          check_package ttyd
+
+          check_package luci-app-vlmcsd
+          check_package vlmcsd
+
+          check_package luci-app-upnp
+
+          echo
+          echo "======================================"
+          echo "Package check finished"
+          echo "======================================"
+
 
       # ==================================================
-      # 8. 创建基础配置
+      # 8. Create LAN network configuration
       # ==================================================
-      - name: Create configuration
+
+      - name: Configure LAN IP
         run: |
+
+          cd immortalwrt
+
+          mkdir -p files/etc/uci-defaults
+
+          cat > files/etc/uci-defaults/99-n1-network <<'EOF'
+          #!/bin/sh
+
+          # ==================================================
+          # N1 default LAN address
+          # ==================================================
+
+          uci -q batch <<'EOT'
+
+          set network.lan.ipaddr='10.0.0.254'
+          set network.lan.netmask='255.255.255.0'
+
+          commit network
+
+          EOT
+
+          exit 0
+          EOF
+
+          chmod +x files/etc/uci-defaults/99-n1-network
+
+
+      # ==================================================
+      # 9. Create default configuration
+      # ==================================================
+
+      - name: Create OpenWrt configuration
+        run: |
+
           cd immortalwrt
 
           cat > .config <<'EOF'
@@ -190,18 +369,24 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_luci=y
+
           CONFIG_PACKAGE_luci-base=y
+
           CONFIG_PACKAGE_luci-mod-admin-full=y
+
           CONFIG_PACKAGE_luci-theme-bootstrap=y
+
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
 
 
           # ==================================================
-          # Firewall / Network
+          # Network / Firewall
           # ==================================================
 
           CONFIG_PACKAGE_firewall4=y
+
           CONFIG_PACKAGE_nftables=y
+
           CONFIG_PACKAGE_ip-full=y
 
 
@@ -210,10 +395,8 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_luci-app-daed=y
-          CONFIG_PACKAGE_daed=y
 
-          CONFIG_PACKAGE_kmod-veth=y
-          CONFIG_PACKAGE_kmod-inet-diag=y
+          CONFIG_PACKAGE_daed=y
 
 
           # ==================================================
@@ -223,16 +406,16 @@ jobs:
           CONFIG_PACKAGE_luci-app-passwall2=y
 
           CONFIG_PACKAGE_xray-core=y
+
           CONFIG_PACKAGE_sing-box=y
+
           CONFIG_PACKAGE_hysteria=y
 
-          CONFIG_PACKAGE_kmod-nft-nat=y
-          CONFIG_PACKAGE_kmod-nft-tproxy=y
           CONFIG_PACKAGE_kmod-nft-socket=y
 
-          CONFIG_PACKAGE_coreutils=y
-          CONFIG_PACKAGE_coreutils-base64=y
-          CONFIG_PACKAGE_coreutils-nohup=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+
+          CONFIG_PACKAGE_kmod-nft-nat=y
 
 
           # ==================================================
@@ -240,6 +423,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_luci-app-lucky=y
+
           CONFIG_PACKAGE_lucky=y
 
 
@@ -248,6 +432,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_luci-app-quickfile=y
+
           CONFIG_PACKAGE_quickfile=y
 
 
@@ -270,6 +455,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_tailscale=y
+
           CONFIG_PACKAGE_luci-app-tailscale-community=y
 
 
@@ -278,6 +464,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_minidlna=y
+
           CONFIG_PACKAGE_luci-app-minidlna=y
 
 
@@ -286,6 +473,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_ttyd=y
+
           CONFIG_PACKAGE_luci-app-ttyd=y
 
 
@@ -294,6 +482,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_vlmcsd=y
+
           CONFIG_PACKAGE_luci-app-vlmcsd=y
 
 
@@ -302,8 +491,8 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_miniupnpd-nftables=y
+
           CONFIG_PACKAGE_luci-app-upnp=y
-          CONFIG_PACKAGE_rpcd-mod-ucode=y
 
 
           # ==================================================
@@ -311,6 +500,7 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_kmod-usb-storage=y
+
           CONFIG_PACKAGE_usbutils=y
 
 
@@ -319,56 +509,62 @@ jobs:
           # ==================================================
 
           CONFIG_PACKAGE_kmod-fs-ext4=y
+
           CONFIG_PACKAGE_kmod-fs-vfat=y
+
           CONFIG_PACKAGE_kmod-fs-exfat=y
 
           CONFIG_PACKAGE_block-mount=y
 
 
           # ==================================================
-          # Disk tools
+          # Disk utilities
           # ==================================================
 
           CONFIG_PACKAGE_e2fsprogs=y
+
           CONFIG_PACKAGE_fdisk=y
+
           CONFIG_PACKAGE_lsblk=y
 
 
           # ==================================================
-          # Tools
+          # Basic tools
           # ==================================================
 
           CONFIG_PACKAGE_curl=y
+
           CONFIG_PACKAGE_wget-ssl=y
+
           CONFIG_PACKAGE_htop=y
 
           EOF
 
+
       # ==================================================
-      # 9. 让 OpenWrt 自动解决依赖
+      # 10. Resolve OpenWrt dependencies
       # ==================================================
-      - name: Resolve dependencies
+
+      - name: Resolve OpenWrt dependencies
         run: |
+
           cd immortalwrt
 
-          make defconfig
+          make defconfig V=s
+
 
       # ==================================================
-      # 10. 显示最终配置
+      # 11. Show final OpenWrt package configuration
       # ==================================================
-      - name: Show final configuration
+
+      - name: Show package configuration
         run: |
+
           cd immortalwrt
-
-          echo "======================================"
-          echo "TARGET"
-          echo "======================================"
-
-          grep '^CONFIG_TARGET_' .config || true
 
           echo
           echo "======================================"
-          echo "REQUESTED PACKAGES"
+          echo "Selected packages"
           echo "======================================"
 
           grep -E \
@@ -376,36 +572,116 @@ jobs:
             .config \
             | sort || true
 
+
+          echo
+          echo "======================================"
+          echo "Target configuration"
+          echo "======================================"
+
+          grep '^CONFIG_TARGET_' .config || true
+
+
       # ==================================================
-      # 11. 准备 Linux 内核
+      # 12. Prepare Linux kernel
       # ==================================================
+
       - name: Prepare Linux kernel
         run: |
+
           cd immortalwrt
+
+          echo
+          echo "======================================"
+          echo "Preparing Linux kernel"
+          echo "======================================"
 
           make target/linux/prepare V=s
 
+
+          echo
+          echo "Kernel source directory:"
+          
+          find build_dir \
+            -maxdepth 6 \
+            -type d \
+            -name 'linux-6.12.*' \
+            -print
+
+
       # ==================================================
-      # 12. 配置 DAED 所需的 eBPF/BTF
+      # 13. Generate Linux kernel configuration
       # ==================================================
+
+      - name: Generate Linux kernel configuration
+        run: |
+
+          cd immortalwrt
+
+          echo
+          echo "======================================"
+          echo "Generating Linux kernel configuration"
+          echo "======================================"
+
+          make target/linux/oldconfig V=s
+
+
+          echo
+          echo "Searching kernel configuration..."
+
+          find build_dir \
+            -type f \
+            -path '*/linux-6.12.*/.config' \
+            -print
+
+
+      # ==================================================
+      # 14. Configure DAED eBPF / BTF
+      # ==================================================
+
       - name: Configure DAED kernel support
         run: |
+
           cd immortalwrt
 
           KERNEL_CONFIG=$(find build_dir \
             -type f \
-            -path '*/linux-*/.config' \
+            -path '*/linux-6.12.*/.config' \
             | head -1)
 
-          if [ -z "$KERNEL_CONFIG" ]; then
-            echo "ERROR: kernel configuration not found"
+
+          echo
+          echo "======================================"
+          echo "Detected kernel configuration"
+          echo "======================================"
+
+          echo "${KERNEL_CONFIG}"
+
+
+          if [ -z "${KERNEL_CONFIG}" ]; then
+
+            echo
+            echo "ERROR: Linux kernel configuration was not generated."
+
+            echo
+            echo "Kernel directories:"
+
+            find build_dir \
+              -type d \
+              -name 'linux-*' \
+              -print
+
             exit 1
+
           fi
 
-          echo "Using kernel config:"
-          echo "$KERNEL_CONFIG"
 
-          ./scripts/config --file "$KERNEL_CONFIG" \
+          echo
+          echo "======================================"
+          echo "Configuring DAED eBPF / BTF"
+          echo "======================================"
+
+
+          ./scripts/config --file "${KERNEL_CONFIG}" \
             --enable BPF \
             --enable BPF_SYSCALL \
             --enable BPF_JIT \
@@ -424,99 +700,270 @@ jobs:
             --enable DEBUG_INFO_BTF \
             --enable DEBUG_INFO_BTF_MODULES
 
+
           echo
           echo "======================================"
-          echo "DAED KERNEL CONFIG"
+          echo "DAED kernel configuration"
           echo "======================================"
 
+
           grep -E \
-            'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO_BTF)=' \
-            "$KERNEL_CONFIG" \
+            'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO|DEBUG_INFO_BTF|DEBUG_INFO_BTF_MODULES)=' \
+            "${KERNEL_CONFIG}" \
             || true
 
+
       # ==================================================
-      # 13. 编译
+      # 15. Verify DAED kernel configuration
       # ==================================================
+
+      - name: Verify DAED kernel configuration
+        run: |
+
+          cd immortalwrt
+
+          KERNEL_CONFIG=$(find build_dir \
+            -type f \
+            -path '*/linux-6.12.*/.config' \
+            | head -1)
+
+
+          if [ -z "${KERNEL_CONFIG}" ]; then
+
+            echo "ERROR: kernel configuration not found"
+
+            exit 1
+
+          fi
+
+
+          echo
+          echo "======================================"
+          echo "Verifying DAED kernel support"
+          echo "======================================"
+
+
+          FAILED=0
+
+
+          check_config()
+          {
+            OPTION="$1"
+
+            if grep -q "^${OPTION}$" "${KERNEL_CONFIG}"; then
+
+              echo "[ OK ] ${OPTION}"
+
+            else
+
+              echo "[FAIL] ${OPTION}"
+
+              FAILED=1
+
+            fi
+          }
+
+
+          check_config "CONFIG_BPF=y"
+
+          check_config "CONFIG_BPF_SYSCALL=y"
+
+          check_config "CONFIG_BPF_JIT=y"
+
+          check_config "CONFIG_BPF_EVENTS=y"
+
+          check_config "CONFIG_BPF_STREAM_PARSER=y"
+
+          check_config "CONFIG_CGROUPS=y"
+
+          check_config "CONFIG_KPROBES=y"
+
+          check_config "CONFIG_KPROBE_EVENTS=y"
+
+          check_config "CONFIG_NET_INGRESS=y"
+
+          check_config "CONFIG_NET_EGRESS=y"
+
+          check_config "CONFIG_NET_CLS_ACT=y"
+
+          check_config "CONFIG_NET_CLS_BPF=m"
+
+          check_config "CONFIG_NET_SCH_INGRESS=m"
+
+          check_config "CONFIG_DEBUG_INFO=y"
+
+          check_config "CONFIG_DEBUG_INFO_BTF=y"
+
+
+          if grep -q '^CONFIG_DEBUG_INFO_REDUCED=y' "${KERNEL_CONFIG}"; then
+
+            echo "[FAIL] CONFIG_DEBUG_INFO_REDUCED=y"
+
+            FAILED=1
+
+          else
+
+            echo "[ OK ] CONFIG_DEBUG_INFO_REDUCED disabled"
+
+          fi
+
+
+          if [ "${FAILED}" -ne 0 ]; then
+
+            echo
+            echo "======================================"
+            echo "DAED kernel configuration FAILED"
+            echo "======================================"
+
+            exit 1
+
+          fi
+
+
+          echo
+          echo "======================================"
+          echo "DAED kernel configuration PASSED"
+          echo "======================================"
+
+
+      # ==================================================
+      # 16. Build ImmortalWrt
+      # ==================================================
+
       - name: Build ImmortalWrt
         run: |
+
           cd immortalwrt
+
+          echo
+          echo "======================================"
+          echo "Building ImmortalWrt"
+          echo "======================================"
 
           make -j2 V=s
 
+
       # ==================================================
-      # 14. 查找 rootfs
+      # 17. Find rootfs
       # ==================================================
+
       - name: Find rootfs
         run: |
+
           cd immortalwrt
+
+          echo
+          echo "======================================"
+          echo "Root filesystem"
+          echo "======================================"
 
           find bin/targets \
             -type f \
             -name '*rootfs.tar.gz' \
             -print
 
+
       # ==================================================
-      # 15. 准备 N1 打包
+      # 18. Prepare rootfs for N1
       # ==================================================
-      - name: Prepare rootfs
+
+      - name: Prepare N1 rootfs
         run: |
+
           mkdir -p rootfs
+
 
           ROOTFS=$(find immortalwrt/bin/targets \
             -type f \
             -name '*rootfs.tar.gz' \
             | head -1)
 
-          if [ -z "$ROOTFS" ]; then
-            echo "ERROR: rootfs not found"
+
+          if [ -z "${ROOTFS}" ]; then
+
+            echo "ERROR: rootfs.tar.gz not found"
+
             exit 1
+
           fi
 
-          cp "$ROOTFS" \
+
+          echo
+          echo "Using rootfs:"
+          echo "${ROOTFS}"
+
+
+          cp "${ROOTFS}" \
             rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
+
 
           ls -lh rootfs/
 
-      # ==================================================
-      # 16. 使用 ophub 打包 N1
-      # ==================================================
-      - name: Package Phicomm N1
-        uses: ophub/amlogic-s9xxx-openwrt@main
-        with:
-          openwrt_path: rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
-          openwrt_board: s905d
-          kernel_repo: ophub/kernel
-          kernel_usage: stable
-          openwrt_kernel: 6.12.y
-          auto_kernel: true
-          openwrt_ip: 192.168.1.1
-          openwrt_size: 512/2048
-          builder_name: ImmortalWrt-25.12.1-N1
 
       # ==================================================
-      # 17. 显示最终固件
+      # 19. Package Amlogic N1 / S905D
       # ==================================================
-      - name: Show firmware
+
+      - name: Package Phicomm N1
+        uses: ophub/amlogic-s9xxx-openwrt@main
+
+        with:
+
+          openwrt_path: rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
+
+          openwrt_board: s905d
+
+          kernel_repo: ophub/kernel
+
+          kernel_usage: stable
+
+          openwrt_kernel: 6.12.y
+
+          auto_kernel: true
+
+          openwrt_ip: 10.0.0.254
+
+          openwrt_size: 512/2048
+
+          builder_name: ImmortalWrt-25.12.1-N1
+
+
+      # ==================================================
+      # 20. Show final firmware
+      # ==================================================
+
+      - name: Show final firmware
         run: |
+
+          echo
           echo "======================================"
-          echo "FINAL FIRMWARE"
+          echo "FINAL N1 FIRMWARE"
           echo "======================================"
 
           find out \
+            -maxdepth 3 \
             -type f \
-            -maxdepth 2 \
             -print \
             2>/dev/null || true
 
+
       # ==================================================
-      # 18. 上传 Artifact
+      # 21. Upload firmware artifact
       # ==================================================
-      - name: Upload firmware
+
+      - name: Upload N1 firmware
         uses: actions/upload-artifact@v4
+
         with:
-          name: ImmortalWrt-25.12.1-N1
+
+          name: ImmortalWrt-25.12.1-N1-10.0.0.254
+
           path: |
+
             out/**
+
             rootfs/**
+
           if-no-files-found: error
+
           retention-days: 30
