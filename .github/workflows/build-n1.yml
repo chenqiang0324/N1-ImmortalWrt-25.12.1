@@ -10,32 +10,40 @@ env:
   IMMORTALWRT_VERSION: "v25.12.1"
 
   # ==================================================
-  # N1 LAN IP
+  # N1 network
   # ==================================================
   LAN_IP: "10.0.0.254"
+  LAN_NETMASK: "255.255.255.0"
 
   # ==================================================
-  # N1 / Amlogic
+  # N1 / Phicomm N1
   # ==================================================
   N1_BOARD: "s905d"
 
   # ==================================================
-  # Stable Linux kernel
+  # Kernel
+  #
+  # ImmortalWrt 25.12.1 build kernel:
+  # 6.12.x
+  #
+  # Final N1 kernel:
+  # stable 6.12.y
   # ==================================================
   N1_KERNEL: "6.12.y"
+
 
 jobs:
 
   build:
 
-    name: Build N1 / S905D / ImmortalWrt 25.12.1
+    name: N1 / S905D / ImmortalWrt 25.12.1
 
     runs-on: ubuntu-24.04
 
     steps:
 
       # ==================================================
-      # 1. Checkout GitHub repository
+      # 1. Checkout
       # ==================================================
 
       - name: Checkout
@@ -43,7 +51,7 @@ jobs:
 
 
       # ==================================================
-      # 2. Free disk space
+      # 2. Free disk
       # ==================================================
 
       - name: Free disk space
@@ -58,7 +66,7 @@ jobs:
 
 
       # ==================================================
-      # 3. Install build dependencies
+      # 3. Build dependencies
       # ==================================================
 
       - name: Install build dependencies
@@ -78,6 +86,7 @@ jobs:
             libssl-dev \
             python3 \
             python3-setuptools \
+            python3-distutils \
             rsync \
             unzip \
             zlib1g-dev \
@@ -95,7 +104,7 @@ jobs:
 
 
       # ==================================================
-      # 4. Clone ImmortalWrt 25.12.1
+      # 4. Clone ImmortalWrt
       # ==================================================
 
       - name: Clone ImmortalWrt
@@ -111,7 +120,7 @@ jobs:
 
           echo
           echo "======================================"
-          echo "ImmortalWrt version"
+          echo "ImmortalWrt"
           echo "======================================"
 
           git describe --tags --always
@@ -122,10 +131,10 @@ jobs:
 
 
       # ==================================================
-      # 5. Add third-party package repositories
+      # 5. Add third-party feeds
       # ==================================================
 
-      - name: Add third party packages
+      - name: Add third party feeds
         run: |
 
           cd immortalwrt
@@ -134,7 +143,13 @@ jobs:
 
 
           # ==================================================
-          # DAED / PassWall2
+          # sbwml extra packages
+          #
+          # Contains:
+          #   DAED
+          #   luci-app-daed
+          #   PassWall
+          #   PassWall2
           # ==================================================
 
           echo "======================================"
@@ -147,9 +162,14 @@ jobs:
             package/third-party/helloworld
 
 
-          # ==================================================
-          # Lucky
-          # ==================================================
+      # ==================================================
+      # 6. Add Lucky
+      # ==================================================
+
+      - name: Add Lucky
+        run: |
+
+          cd immortalwrt
 
           echo "======================================"
           echo "Adding Lucky"
@@ -161,9 +181,14 @@ jobs:
             package/third-party/lucky
 
 
-          # ==================================================
-          # QuickFile
-          # ==================================================
+      # ==================================================
+      # 7. Add QuickFile
+      # ==================================================
+
+      - name: Add QuickFile
+        run: |
+
+          cd immortalwrt
 
           echo "======================================"
           echo "Adding QuickFile"
@@ -175,9 +200,14 @@ jobs:
             package/third-party/quickfile
 
 
-          # ==================================================
-          # Amlogic Treasure Box
-          # ==================================================
+      # ==================================================
+      # 8. Add Amlogic Treasure Box
+      # ==================================================
+
+      - name: Add Amlogic Treasure Box
+        run: |
+
+          cd immortalwrt
 
           echo "======================================"
           echo "Adding Amlogic Treasure Box"
@@ -189,39 +219,34 @@ jobs:
             package/third-party/luci-app-amlogic
 
 
-          # ==================================================
-          # LinkEase
-          #
-          # 不再整个拉 kenzok8/small-package
-          # 避免大量无关插件产生 dependency warning
-          # ==================================================
+      # ==================================================
+      # 9. Add LinkEase / iStore
+      #
+      # IMPORTANT:
+      #
+      # Do NOT copy only luci-app-linkease.
+      #
+      # The official LinkEase iStore repository is used
+      # instead of the old incomplete small-package copy.
+      # ==================================================
+
+      - name: Add LinkEase iStore
+        run: |
+
+          cd immortalwrt
 
           echo "======================================"
-          echo "Adding LinkEase"
+          echo "Adding LinkEase iStore"
           echo "======================================"
-
-          mkdir -p package/third-party/linkease
 
           git clone \
             --depth=1 \
-            --filter=blob:none \
-            --sparse \
-            https://github.com/kenzok8/small-package.git \
-            /tmp/small-package
-
-          cd /tmp/small-package
-
-          git sparse-checkout set luci-app-linkease
-
-          cd -
-
-          cp -a \
-            /tmp/small-package/luci-app-linkease \
-            package/third-party/linkease/
+            https://github.com/linkease/istore.git \
+            package/third-party/istore
 
 
       # ==================================================
-      # 6. Update feeds
+      # 10. Update feeds
       # ==================================================
 
       - name: Update feeds
@@ -235,115 +260,33 @@ jobs:
 
 
       # ==================================================
-      # 7. Check requested packages
+      # 11. Package discovery
       # ==================================================
 
-      - name: Check requested packages
+      - name: Inspect packages
         run: |
 
           cd immortalwrt
 
           echo
           echo "======================================"
-          echo "Checking requested packages"
-          echo "======================================"
-
-          check_package()
-          {
-            PKG="$1"
-
-            echo
-            echo "--------------------------------------"
-            echo "Checking: ${PKG}"
-            echo "--------------------------------------"
-
-            if find package feeds \
-              -type f \
-              \( -name Makefile -o -name '*.mk' \) \
-              -print0 2>/dev/null \
-              | xargs -0 grep -l \
-              "define Package/${PKG}" \
-              2>/dev/null \
-              | head -5 \
-              | grep -q .
-            then
-              echo "[ OK ] ${PKG}"
-            else
-              echo "[WARN] ${PKG} not found"
-            fi
-          }
-
-
-          check_package luci-app-daed
-          check_package daed
-
-          check_package luci-app-passwall2
-
-          check_package luci-app-lucky
-          check_package lucky
-
-          check_package luci-app-quickfile
-          check_package quickfile
-
-          check_package luci-app-linkease
-
-          check_package luci-app-amlogic
-
-          check_package luci-app-minidlna
-          check_package minidlna
-
-          check_package luci-app-tailscale-community
-          check_package tailscale
-
-          check_package luci-app-ttyd
-          check_package ttyd
-
-          check_package luci-app-vlmcsd
-          check_package vlmcsd
-
-          check_package luci-app-upnp
-
-          echo
-          echo "======================================"
-          echo "Package check finished"
+          echo "Searching requested packages"
           echo "======================================"
 
 
-      # ==================================================
-      # 8. Create LAN network configuration
-      # ==================================================
-
-      - name: Configure LAN IP
-        run: |
-
-          cd immortalwrt
-
-          mkdir -p files/etc/uci-defaults
-
-          cat > files/etc/uci-defaults/99-n1-network <<'EOF'
-          #!/bin/sh
-
-          # ==================================================
-          # N1 default LAN address
-          # ==================================================
-
-          uci -q batch <<'EOT'
-
-          set network.lan.ipaddr='10.0.0.254'
-          set network.lan.netmask='255.255.255.0'
-
-          commit network
-
-          EOT
-
-          exit 0
-          EOF
-
-          chmod +x files/etc/uci-defaults/99-n1-network
+          find package feeds \
+            -type f \
+            -name Makefile \
+            -print \
+            2>/dev/null \
+            | grep -E \
+              '(daed|passwall2|lucky|quickfile|amlogic|istore|tailscale|ttyd|minidlna|vlmcsd|upnp)' \
+            | head -200 \
+            || true
 
 
       # ==================================================
-      # 9. Create default configuration
+      # 12. Create OpenWrt configuration
       # ==================================================
 
       - name: Create OpenWrt configuration
@@ -380,7 +323,7 @@ jobs:
 
 
           # ==================================================
-          # Network / Firewall
+          # Firewall / nftables
           # ==================================================
 
           CONFIG_PACKAGE_firewall4=y
@@ -394,9 +337,9 @@ jobs:
           # DAED
           # ==================================================
 
-          CONFIG_PACKAGE_luci-app-daed=y
-
           CONFIG_PACKAGE_daed=y
+
+          CONFIG_PACKAGE_luci-app-daed=y
 
 
           # ==================================================
@@ -405,26 +348,14 @@ jobs:
 
           CONFIG_PACKAGE_luci-app-passwall2=y
 
-          CONFIG_PACKAGE_xray-core=y
-
-          CONFIG_PACKAGE_sing-box=y
-
-          CONFIG_PACKAGE_hysteria=y
-
-          CONFIG_PACKAGE_kmod-nft-socket=y
-
-          CONFIG_PACKAGE_kmod-nft-tproxy=y
-
-          CONFIG_PACKAGE_kmod-nft-nat=y
-
 
           # ==================================================
           # Lucky
           # ==================================================
 
-          CONFIG_PACKAGE_luci-app-lucky=y
-
           CONFIG_PACKAGE_lucky=y
+
+          CONFIG_PACKAGE_luci-app-lucky=y
 
 
           # ==================================================
@@ -433,14 +364,12 @@ jobs:
 
           CONFIG_PACKAGE_luci-app-quickfile=y
 
-          CONFIG_PACKAGE_quickfile=y
-
 
           # ==================================================
-          # LinkEase
+          # LinkEase / iStore
           # ==================================================
 
-          CONFIG_PACKAGE_luci-app-linkease=y
+          CONFIG_PACKAGE_luci-app-store=y
 
 
           # ==================================================
@@ -505,7 +434,7 @@ jobs:
 
 
           # ==================================================
-          # Filesystem
+          # Filesystems
           # ==================================================
 
           CONFIG_PACKAGE_kmod-fs-ext4=y
@@ -518,18 +447,7 @@ jobs:
 
 
           # ==================================================
-          # Disk utilities
-          # ==================================================
-
-          CONFIG_PACKAGE_e2fsprogs=y
-
-          CONFIG_PACKAGE_fdisk=y
-
-          CONFIG_PACKAGE_lsblk=y
-
-
-          # ==================================================
-          # Basic tools
+          # Tools
           # ==================================================
 
           CONFIG_PACKAGE_curl=y
@@ -542,47 +460,72 @@ jobs:
 
 
       # ==================================================
-      # 10. Resolve OpenWrt dependencies
+      # 13. Resolve dependencies
       # ==================================================
 
-      - name: Resolve OpenWrt dependencies
+      - name: Resolve package dependencies
         run: |
 
           cd immortalwrt
+
+          echo
+          echo "======================================"
+          echo "Running make defconfig"
+          echo "======================================"
 
           make defconfig V=s
 
 
       # ==================================================
-      # 11. Show final OpenWrt package configuration
+      # 14. Verify requested packages
       # ==================================================
 
-      - name: Show package configuration
+      - name: Verify package selection
         run: |
 
           cd immortalwrt
 
           echo
           echo "======================================"
-          echo "Selected packages"
+          echo "Final package selection"
           echo "======================================"
 
           grep -E \
-            '^CONFIG_PACKAGE_(luci-app-|luci-i18n-|daed|lucky|quickfile|tailscale|xray-core|sing-box|hysteria|kmod-nft|kmod-usb|kmod-fs-|block-mount|usbutils|curl|wget-ssl|htop)' \
+            '^CONFIG_PACKAGE_' \
             .config \
-            | sort || true
-
-
-          echo
-          echo "======================================"
-          echo "Target configuration"
-          echo "======================================"
-
-          grep '^CONFIG_TARGET_' .config || true
+            | grep -E \
+              '(daed|luci-app-daed|passwall2|lucky|quickfile|luci-app-store|amlogic|tailscale|ttyd|minidlna|vlmcsd|upnp|usb-storage|fs-ext4|fs-vfat|fs-exfat|block-mount|usbutils|curl|wget-ssl|htop)' \
+            | sort \
+            || true
 
 
       # ==================================================
-      # 12. Prepare Linux kernel
+      # 15. Configure LAN
+      # ==================================================
+
+      - name: Configure LAN IP
+        run: |
+
+          cd immortalwrt
+
+          mkdir -p files/etc/uci-defaults
+
+          cat > files/etc/uci-defaults/99-n1-network <<'EOF'
+          #!/bin/sh
+
+          uci set network.lan.ipaddr='10.0.0.254'
+          uci set network.lan.netmask='255.255.255.0'
+
+          uci commit network
+
+          exit 0
+          EOF
+
+          chmod +x files/etc/uci-defaults/99-n1-network
+
+
+      # ==================================================
+      # 16. Prepare Linux kernel
       # ==================================================
 
       - name: Prepare Linux kernel
@@ -599,8 +542,8 @@ jobs:
 
 
           echo
-          echo "Kernel source directory:"
-          
+          echo "Kernel directories:"
+
           find build_dir \
             -maxdepth 6 \
             -type d \
@@ -609,39 +552,28 @@ jobs:
 
 
       # ==================================================
-      # 13. Generate Linux kernel configuration
+      # 17. Generate kernel configuration
+      #
+      # IMPORTANT:
+      #
+      # There is NO:
+      #
+      # make target/linux/oldconfig
+      #
+      # because that target does not exist.
+      #
+      # defconfig already generated above.
       # ==================================================
 
-      - name: Generate Linux kernel configuration
+      - name: Locate kernel configuration
         run: |
 
           cd immortalwrt
 
           echo
           echo "======================================"
-          echo "Generating Linux kernel configuration"
+          echo "Locating kernel configuration"
           echo "======================================"
-
-          make target/linux/oldconfig V=s
-
-
-          echo
-          echo "Searching kernel configuration..."
-
-          find build_dir \
-            -type f \
-            -path '*/linux-6.12.*/.config' \
-            -print
-
-
-      # ==================================================
-      # 14. Configure DAED eBPF / BTF
-      # ==================================================
-
-      - name: Configure DAED kernel support
-        run: |
-
-          cd immortalwrt
 
           KERNEL_CONFIG=$(find build_dir \
             -type f \
@@ -649,21 +581,17 @@ jobs:
             | head -1)
 
 
-          echo
-          echo "======================================"
-          echo "Detected kernel configuration"
-          echo "======================================"
-
+          echo "Kernel config:"
           echo "${KERNEL_CONFIG}"
 
 
           if [ -z "${KERNEL_CONFIG}" ]; then
 
             echo
-            echo "ERROR: Linux kernel configuration was not generated."
+            echo "ERROR: kernel configuration not found"
 
             echo
-            echo "Kernel directories:"
+            echo "Available kernel directories:"
 
             find build_dir \
               -type d \
@@ -675,10 +603,28 @@ jobs:
           fi
 
 
+          echo "${KERNEL_CONFIG}" > /tmp/kernel_config_path
+
+
+      # ==================================================
+      # 18. Configure DAED kernel support
+      # ==================================================
+
+      - name: Configure DAED eBPF and BTF
+        run: |
+
+          cd immortalwrt
+
+          KERNEL_CONFIG=$(cat /tmp/kernel_config_path)
+
+
           echo
           echo "======================================"
-          echo "Configuring DAED eBPF / BTF"
+          echo "DAED kernel configuration"
           echo "======================================"
+
+          echo "Using:"
+          echo "${KERNEL_CONFIG}"
 
 
           ./scripts/config --file "${KERNEL_CONFIG}" \
@@ -703,9 +649,8 @@ jobs:
 
           echo
           echo "======================================"
-          echo "DAED kernel configuration"
+          echo "DAED kernel configuration result"
           echo "======================================"
-
 
           grep -E \
             'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO|DEBUG_INFO_BTF|DEBUG_INFO_BTF_MODULES)=' \
@@ -714,34 +659,15 @@ jobs:
 
 
       # ==================================================
-      # 15. Verify DAED kernel configuration
+      # 19. Verify DAED kernel support
       # ==================================================
 
-      - name: Verify DAED kernel configuration
+      - name: Verify DAED kernel support
         run: |
 
           cd immortalwrt
 
-          KERNEL_CONFIG=$(find build_dir \
-            -type f \
-            -path '*/linux-6.12.*/.config' \
-            | head -1)
-
-
-          if [ -z "${KERNEL_CONFIG}" ]; then
-
-            echo "ERROR: kernel configuration not found"
-
-            exit 1
-
-          fi
-
-
-          echo
-          echo "======================================"
-          echo "Verifying DAED kernel support"
-          echo "======================================"
-
+          KERNEL_CONFIG=$(cat /tmp/kernel_config_path)
 
           FAILED=0
 
@@ -762,6 +688,12 @@ jobs:
 
             fi
           }
+
+
+          echo
+          echo "======================================"
+          echo "Checking DAED eBPF / BTF"
+          echo "======================================"
 
 
           check_config "CONFIG_BPF=y"
@@ -812,7 +744,7 @@ jobs:
 
             echo
             echo "======================================"
-            echo "DAED kernel configuration FAILED"
+            echo "DAED kernel verification FAILED"
             echo "======================================"
 
             exit 1
@@ -822,12 +754,12 @@ jobs:
 
           echo
           echo "======================================"
-          echo "DAED kernel configuration PASSED"
+          echo "DAED kernel verification PASSED"
           echo "======================================"
 
 
       # ==================================================
-      # 16. Build ImmortalWrt
+      # 20. Build ImmortalWrt
       # ==================================================
 
       - name: Build ImmortalWrt
@@ -844,7 +776,7 @@ jobs:
 
 
       # ==================================================
-      # 17. Find rootfs
+      # 21. Find rootfs
       # ==================================================
 
       - name: Find rootfs
@@ -854,7 +786,7 @@ jobs:
 
           echo
           echo "======================================"
-          echo "Root filesystem"
+          echo "Searching rootfs"
           echo "======================================"
 
           find bin/targets \
@@ -864,7 +796,7 @@ jobs:
 
 
       # ==================================================
-      # 18. Prepare rootfs for N1
+      # 22. Prepare rootfs
       # ==================================================
 
       - name: Prepare N1 rootfs
@@ -901,7 +833,10 @@ jobs:
 
 
       # ==================================================
-      # 19. Package Amlogic N1 / S905D
+      # 23. Package N1 / S905D
+      #
+      # Final kernel:
+      # stable 6.12.y
       # ==================================================
 
       - name: Package Phicomm N1
@@ -929,26 +864,27 @@ jobs:
 
 
       # ==================================================
-      # 20. Show final firmware
+      # 24. Show output
       # ==================================================
 
-      - name: Show final firmware
+      - name: Show firmware
         run: |
 
           echo
           echo "======================================"
-          echo "FINAL N1 FIRMWARE"
+          echo "N1 FIRMWARE OUTPUT"
           echo "======================================"
 
           find out \
             -maxdepth 3 \
             -type f \
             -print \
-            2>/dev/null || true
+            2>/dev/null \
+            || true
 
 
       # ==================================================
-      # 21. Upload firmware artifact
+      # 25. Upload artifact
       # ==================================================
 
       - name: Upload N1 firmware
