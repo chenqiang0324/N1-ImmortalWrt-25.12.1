@@ -1,47 +1,32 @@
-## 1. `.github/workflows/build-n1.yml`
-
-```yaml
 name: Build N1 ImmortalWrt 25.12.1
 
 on:
   workflow_dispatch:
-    inputs:
-      clean_build:
-        description: "Clean build"
-        required: false
-        default: true
-        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   IMMORTALWRT_VERSION: "v25.12.1"
-  OPENWRT_TARGET: "armsr"
-  OPENWRT_SUBTARGET: "armv8"
-
-  # N1 使用 ophub 的 s905d 打包链
-  OPENWRT_BOARD: "s905d"
-
-  # 稳定版 6.12
-  KERNEL_REPO: "ophub/kernel"
-  KERNEL_USAGE: "stable"
-  KERNEL_SERIES: "6.12.y"
-
   LAN_IP: "192.168.1.1"
 
 jobs:
-
   build:
+    name: Build N1 / S905D
     runs-on: ubuntu-24.04
 
     steps:
 
-      - name: Checkout firmware project
+      # ==================================================
+      # 1. 获取你的 GitHub 工程
+      # ==================================================
+      - name: Checkout
         uses: actions/checkout@v4
 
+      # ==================================================
+      # 2. 清理 GitHub Actions 空间
+      # ==================================================
       - name: Free disk space
-        shell: bash
         run: |
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /usr/share/dotnet
@@ -49,8 +34,10 @@ jobs:
           sudo rm -rf /usr/local/share/powershell
           df -h
 
+      # ==================================================
+      # 3. 安装编译工具
+      # ==================================================
       - name: Install build dependencies
-        shell: bash
         run: |
           sudo apt-get update
 
@@ -61,13 +48,10 @@ jobs:
             bison \
             gawk \
             gettext \
-            gcc-multilib \
-            g++-multilib \
             git \
             libncurses-dev \
             libssl-dev \
             python3 \
-            python3-distutils \
             python3-setuptools \
             rsync \
             unzip \
@@ -82,8 +66,10 @@ jobs:
             swig \
             time
 
-      - name: Clone ImmortalWrt 25.12.1
-        shell: bash
+      # ==================================================
+      # 4. 下载 ImmortalWrt 25.12.1
+      # ==================================================
+      - name: Clone ImmortalWrt
         run: |
           git clone \
             --depth=1 \
@@ -93,162 +79,146 @@ jobs:
 
           cd immortalwrt
 
+          echo "ImmortalWrt commit:"
           git rev-parse HEAD
 
-      - name: Add third-party package repositories
-        shell: bash
+      # ==================================================
+      # 5. 加入第三方软件包
+      # ==================================================
+      - name: Add third party feeds
         run: |
           cd immortalwrt
 
           mkdir -p package/third-party
 
-          # DAED / PassWall2 / cores
-          git clone --depth=1 \
+          echo "Adding DAED / PassWall2..."
+
+          git clone \
+            --depth=1 \
             https://github.com/sbwml/openwrt_helloworld.git \
             package/third-party/helloworld
 
-          # Lucky
-          git clone --depth=1 \
+          echo "Adding Lucky..."
+
+          git clone \
+            --depth=1 \
             https://github.com/sirpdboy/luci-app-lucky.git \
             package/third-party/lucky
 
-          # QuickFile
-          git clone --depth=1 \
+          echo "Adding QuickFile..."
+
+          git clone \
+            --depth=1 \
             https://github.com/sbwml/luci-app-quickfile.git \
             package/third-party/quickfile
 
-          # 晶晨宝盒
-          git clone --depth=1 \
+          echo "Adding Amlogic Treasure Box..."
+
+          git clone \
+            --depth=1 \
             https://github.com/ophub/luci-app-amlogic.git \
             package/third-party/luci-app-amlogic
 
-          # LinkEase
-          git clone --depth=1 \
+          echo "Adding LinkEase..."
+
+          git clone \
+            --depth=1 \
             https://github.com/kenzok8/small-package.git \
             package/third-party/small-package
 
+      # ==================================================
+      # 6. 更新 OpenWrt feeds
+      # ==================================================
       - name: Update feeds
-        shell: bash
         run: |
           cd immortalwrt
 
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Verify required packages exist
-        shell: bash
+      # ==================================================
+      # 7. 显示实际找到的插件
+      # ==================================================
+      - name: Check packages
         run: |
           cd immortalwrt
 
-          echo "Checking package definitions..."
+          echo "======================================"
+          echo "Checking requested packages"
+          echo "======================================"
 
           for pkg in \
-            luci-app-lucky \
-            lucky \
-            luci-app-quickfile \
-            quickfile \
             luci-app-daed \
-            daed \
             luci-app-passwall2 \
-            xray-core \
-            sing-box \
-            hysteria \
+            luci-app-lucky \
+            luci-app-quickfile \
             luci-app-amlogic \
             luci-app-linkease
           do
-            echo "---- $pkg ----"
+            echo
+            echo "========== ${pkg} =========="
 
-            find \
-              package \
-              feeds \
-              -type f \
-              -name Makefile \
-              -exec grep -l \
-                "PKG_NAME.*${pkg}\|define Package/${pkg}" \
-                {} \; 2>/dev/null \
+            grep -R \
+              "define Package/${pkg}" \
+              package feeds \
+              2>/dev/null \
               | head -10 || true
           done
 
-      - name: Generate base configuration
-        shell: bash
+      # ==================================================
+      # 8. 创建基础配置
+      # ==================================================
+      - name: Create configuration
         run: |
           cd immortalwrt
 
           cat > .config <<'EOF'
+
+          # ==================================================
+          # Target
+          # ==================================================
+
           CONFIG_TARGET_armsr=y
           CONFIG_TARGET_armsr_armv8=y
           CONFIG_TARGET_armsr_armv8_DEVICE_generic=y
 
           CONFIG_TARGET_ROOTFS_TARGZ=y
 
+
+          # ==================================================
+          # LuCI
+          # ==================================================
+
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-base=y
           CONFIG_PACKAGE_luci-mod-admin-full=y
           CONFIG_PACKAGE_luci-theme-bootstrap=y
-
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+
+
+          # ==================================================
+          # Firewall / Network
+          # ==================================================
 
           CONFIG_PACKAGE_firewall4=y
           CONFIG_PACKAGE_nftables=y
-
-          CONFIG_PACKAGE_block-mount=y
-
-          CONFIG_PACKAGE_kmod-usb-storage=y
-          CONFIG_PACKAGE_kmod-fs-ext4=y
-          CONFIG_PACKAGE_kmod-fs-vfat=y
-          CONFIG_PACKAGE_kmod-fs-exfat=y
-
-          CONFIG_PACKAGE_usbutils=y
-
-          CONFIG_PACKAGE_curl=y
-          CONFIG_PACKAGE_wget-ssl=y
-          CONFIG_PACKAGE_htop=y
-
-          CONFIG_PACKAGE_luci-app-minidlna=y
-          CONFIG_PACKAGE_luci-app-ttyd=y
-          CONFIG_PACKAGE_luci-app-vlmcsd=y
-          CONFIG_PACKAGE_luci-app-upnp=y
-
-          CONFIG_PACKAGE_miniupnpd-nftables=y
-          CONFIG_PACKAGE_rpcd-mod-ucode=y
-
-          CONFIG_PACKAGE_luci-app-tailscale-community=y
-          CONFIG_PACKAGE_tailscale=y
-
-          CONFIG_PACKAGE_kmod-nft-nat=y
-          CONFIG_PACKAGE_kmod-nft-tproxy=y
-          CONFIG_PACKAGE_kmod-nft-socket=y
-
           CONFIG_PACKAGE_ip-full=y
 
-          CONFIG_PACKAGE_coreutils=y
-          CONFIG_PACKAGE_coreutils-base64=y
-          CONFIG_PACKAGE_coreutils-nohup=y
 
-          CONFIG_PACKAGE_lua=y
-          CONFIG_PACKAGE_libuci-lua=y
-          CONFIG_PACKAGE_luci-compat=y
-          CONFIG_PACKAGE_luci-lib-jsonc=y
+          # ==================================================
+          # DAED
+          # ==================================================
 
-          CONFIG_PACKAGE_e2fsprogs=y
-          CONFIG_PACKAGE_fdisk=y
-          CONFIG_PACKAGE_lsblk=y
+          CONFIG_PACKAGE_luci-app-daed=y
+          CONFIG_PACKAGE_daed=y
 
           CONFIG_PACKAGE_kmod-veth=y
           CONFIG_PACKAGE_kmod-inet-diag=y
 
-          CONFIG_PACKAGE_luci-app-lucky=y
-          CONFIG_PACKAGE_lucky=y
 
-          CONFIG_PACKAGE_luci-app-quickfile=y
-          CONFIG_PACKAGE_quickfile=y
-
-          CONFIG_PACKAGE_luci-app-linkease=y
-
-          CONFIG_PACKAGE_luci-app-amlogic=y
-
-          CONFIG_PACKAGE_luci-app-daed=y
-          CONFIG_PACKAGE_daed=y
+          # ==================================================
+          # PassWall2
+          # ==================================================
 
           CONFIG_PACKAGE_luci-app-passwall2=y
 
@@ -256,60 +226,186 @@ jobs:
           CONFIG_PACKAGE_sing-box=y
           CONFIG_PACKAGE_hysteria=y
 
-          CONFIG_PACKAGE_luci-i18n-lucky-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-quickfile-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-passwall2-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-upnp-zh-cn=y
+          CONFIG_PACKAGE_kmod-nft-nat=y
+          CONFIG_PACKAGE_kmod-nft-tproxy=y
+          CONFIG_PACKAGE_kmod-nft-socket=y
 
-          CONFIG_PACKAGE_luci-i18n-minidlna-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-ttyd-zh-cn=y
-          CONFIG_PACKAGE_luci-i18n-vlmcsd-zh-cn=y
+          CONFIG_PACKAGE_coreutils=y
+          CONFIG_PACKAGE_coreutils-base64=y
+          CONFIG_PACKAGE_coreutils-nohup=y
 
-          CONFIG_PACKAGE_luci-i18n-tailscale-community-zh-cn=y
+
+          # ==================================================
+          # Lucky
+          # ==================================================
+
+          CONFIG_PACKAGE_luci-app-lucky=y
+          CONFIG_PACKAGE_lucky=y
+
+
+          # ==================================================
+          # QuickFile
+          # ==================================================
+
+          CONFIG_PACKAGE_luci-app-quickfile=y
+          CONFIG_PACKAGE_quickfile=y
+
+
+          # ==================================================
+          # LinkEase
+          # ==================================================
+
+          CONFIG_PACKAGE_luci-app-linkease=y
+
+
+          # ==================================================
+          # Amlogic Treasure Box
+          # ==================================================
+
+          CONFIG_PACKAGE_luci-app-amlogic=y
+
+
+          # ==================================================
+          # Tailscale
+          # ==================================================
+
+          CONFIG_PACKAGE_tailscale=y
+          CONFIG_PACKAGE_luci-app-tailscale-community=y
+
+
+          # ==================================================
+          # MiniDLNA
+          # ==================================================
+
+          CONFIG_PACKAGE_minidlna=y
+          CONFIG_PACKAGE_luci-app-minidlna=y
+
+
+          # ==================================================
+          # TTYD
+          # ==================================================
+
+          CONFIG_PACKAGE_ttyd=y
+          CONFIG_PACKAGE_luci-app-ttyd=y
+
+
+          # ==================================================
+          # VLMCSD
+          # ==================================================
+
+          CONFIG_PACKAGE_vlmcsd=y
+          CONFIG_PACKAGE_luci-app-vlmcsd=y
+
+
+          # ==================================================
+          # UPnP
+          # ==================================================
+
+          CONFIG_PACKAGE_miniupnpd-nftables=y
+          CONFIG_PACKAGE_luci-app-upnp=y
+          CONFIG_PACKAGE_rpcd-mod-ucode=y
+
+
+          # ==================================================
+          # USB
+          # ==================================================
+
+          CONFIG_PACKAGE_kmod-usb-storage=y
+          CONFIG_PACKAGE_usbutils=y
+
+
+          # ==================================================
+          # Filesystem
+          # ==================================================
+
+          CONFIG_PACKAGE_kmod-fs-ext4=y
+          CONFIG_PACKAGE_kmod-fs-vfat=y
+          CONFIG_PACKAGE_kmod-fs-exfat=y
+
+          CONFIG_PACKAGE_block-mount=y
+
+
+          # ==================================================
+          # Disk tools
+          # ==================================================
+
+          CONFIG_PACKAGE_e2fsprogs=y
+          CONFIG_PACKAGE_fdisk=y
+          CONFIG_PACKAGE_lsblk=y
+
+
+          # ==================================================
+          # Tools
+          # ==================================================
+
+          CONFIG_PACKAGE_curl=y
+          CONFIG_PACKAGE_wget-ssl=y
+          CONFIG_PACKAGE_htop=y
 
           EOF
 
-          make defconfig
-
-      - name: Check resulting package configuration
-        shell: bash
+      # ==================================================
+      # 9. 让 OpenWrt 自动解决依赖
+      # ==================================================
+      - name: Resolve dependencies
         run: |
           cd immortalwrt
 
-          echo "===== TARGET ====="
-          grep '^CONFIG_TARGET_' .config | head -50
+          make defconfig
+
+      # ==================================================
+      # 10. 显示最终配置
+      # ==================================================
+      - name: Show final configuration
+        run: |
+          cd immortalwrt
+
+          echo "======================================"
+          echo "TARGET"
+          echo "======================================"
+
+          grep '^CONFIG_TARGET_' .config || true
 
           echo
-          echo "===== SELECTED PACKAGES ====="
+          echo "======================================"
+          echo "REQUESTED PACKAGES"
+          echo "======================================"
 
           grep -E \
-            'CONFIG_PACKAGE_(luci-app-|luci-i18n-|daed|lucky|quickfile|tailscale|xray-core|sing-box|hysteria|kmod-nft|kmod-usb|kmod-fs-|block-mount|usbutils|curl|wget-ssl|htop)' \
+            '^CONFIG_PACKAGE_(luci-app-|luci-i18n-|daed|lucky|quickfile|tailscale|xray-core|sing-box|hysteria|kmod-nft|kmod-usb|kmod-fs-|block-mount|usbutils|curl|wget-ssl|htop)' \
             .config \
-            | sort
+            | sort || true
 
-      - name: Prepare Linux kernel build
-        shell: bash
+      # ==================================================
+      # 11. 准备 Linux 内核
+      # ==================================================
+      - name: Prepare Linux kernel
         run: |
           cd immortalwrt
 
           make target/linux/prepare V=s
 
-      - name: Inject DAED eBPF/BTF kernel requirements
-        shell: bash
+      # ==================================================
+      # 12. 配置 DAED 所需的 eBPF/BTF
+      # ==================================================
+      - name: Configure DAED kernel support
         run: |
           cd immortalwrt
 
-          KERNEL_CONFIG="$(find build_dir -type f -path '*/linux-*/.config' | head -1)"
+          KERNEL_CONFIG=$(find build_dir \
+            -type f \
+            -path '*/linux-*/.config' \
+            | head -1)
 
-          if [ -z "${KERNEL_CONFIG}" ]; then
-            echo "ERROR: Linux kernel .config not found"
+          if [ -z "$KERNEL_CONFIG" ]; then
+            echo "ERROR: kernel configuration not found"
             exit 1
           fi
 
-          echo "Kernel config:"
-          echo "${KERNEL_CONFIG}"
+          echo "Using kernel config:"
+          echo "$KERNEL_CONFIG"
 
-          ./scripts/config --file "${KERNEL_CONFIG}" \
+          ./scripts/config --file "$KERNEL_CONFIG" \
             --enable BPF \
             --enable BPF_SYSCALL \
             --enable BPF_JIT \
@@ -329,107 +425,93 @@ jobs:
             --enable DEBUG_INFO_BTF_MODULES
 
           echo
-          echo "===== DAED KERNEL CONFIG ====="
+          echo "======================================"
+          echo "DAED KERNEL CONFIG"
+          echo "======================================"
 
           grep -E \
-            'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO|DEBUG_INFO_BTF)=' \
-            "${KERNEL_CONFIG}" \
+            'CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO_BTF)=' \
+            "$KERNEL_CONFIG" \
             || true
 
-      - name: Build ImmortalWrt rootfs
-        shell: bash
-        env:
-          MAKE_JOBS: 2
+      # ==================================================
+      # 13. 编译
+      # ==================================================
+      - name: Build ImmortalWrt
         run: |
           cd immortalwrt
 
-          make -j${MAKE_JOBS} V=s
+          make -j2 V=s
 
-      - name: Locate rootfs
-        shell: bash
+      # ==================================================
+      # 14. 查找 rootfs
+      # ==================================================
+      - name: Find rootfs
         run: |
           cd immortalwrt
 
           find bin/targets \
             -type f \
-            \( -name '*rootfs.tar.gz' -o -name '*rootfs.tar.zst' \) \
+            -name '*rootfs.tar.gz' \
             -print
 
-      - name: Convert rootfs to tar.gz if necessary
-        shell: bash
+      # ==================================================
+      # 15. 准备 N1 打包
+      # ==================================================
+      - name: Prepare rootfs
         run: |
-          cd immortalwrt
+          mkdir -p rootfs
 
-          mkdir -p ../rootfs
-
-          ROOTFS="$(find bin/targets \
+          ROOTFS=$(find immortalwrt/bin/targets \
             -type f \
             -name '*rootfs.tar.gz' \
-            | head -1)"
+            | head -1)
 
-          if [ -n "${ROOTFS}" ]; then
-            cp "${ROOTFS}" ../rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
-            exit 0
-          fi
-
-          ROOTFS_ZST="$(find bin/targets \
-            -type f \
-            -name '*rootfs.tar.zst' \
-            | head -1)"
-
-          if [ -z "${ROOTFS_ZST}" ]; then
-            echo "ERROR: rootfs archive not found"
+          if [ -z "$ROOTFS" ]; then
+            echo "ERROR: rootfs not found"
             exit 1
           fi
 
-          zstd -d "${ROOTFS_ZST}" \
-            -o ../rootfs/rootfs.tar
+          cp "$ROOTFS" \
+            rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
 
-          gzip -9 \
-            ../rootfs/rootfs.tar
+          ls -lh rootfs/
 
-          mv \
-            ../rootfs/rootfs.tar.gz \
-            ../rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
-
-      - name: Verify rootfs package manifest
-        shell: bash
-        run: |
-          cd rootfs
-
-          tar -tzf openwrt-armsr-armv8-generic-rootfs.tar.gz \
-            | grep -E \
-            'luci-app-(daed|passwall2|lucky|quickfile|linkease|amlogic)' \
-            | head -100 || true
-
-      - name: Package N1 image
+      # ==================================================
+      # 16. 使用 ophub 打包 N1
+      # ==================================================
+      - name: Package Phicomm N1
         uses: ophub/amlogic-s9xxx-openwrt@main
         with:
           openwrt_path: rootfs/openwrt-armsr-armv8-generic-rootfs.tar.gz
           openwrt_board: s905d
-          kernel_repo: ${{ env.KERNEL_REPO }}
-          kernel_usage: ${{ env.KERNEL_USAGE }}
-          openwrt_kernel: ${{ env.KERNEL_SERIES }}
+          kernel_repo: ophub/kernel
+          kernel_usage: stable
+          openwrt_kernel: 6.12.y
           auto_kernel: true
-          openwrt_ip: ${{ env.LAN_IP }}
-          openwrt_size: "512/2048"
-          builder_name: "ImmortalWrt-25.12.1-N1-DAED"
+          openwrt_ip: 192.168.1.1
+          openwrt_size: 512/2048
+          builder_name: ImmortalWrt-25.12.1-N1
 
-      - name: Verify generated firmware
-        shell: bash
+      # ==================================================
+      # 17. 显示最终固件
+      # ==================================================
+      - name: Show firmware
         run: |
-          echo "===== OUTPUT ====="
-          find out -type f -maxdepth 2 -print 2>/dev/null || true
+          echo "======================================"
+          echo "FINAL FIRMWARE"
+          echo "======================================"
 
-          echo
-          echo "===== IMAGE FILES ====="
-          find . \
+          find out \
             -type f \
-            \( -name '*.img' -o -name '*.img.gz' -o -name '*.7z' \) \
+            -maxdepth 2 \
             -print \
             2>/dev/null || true
 
-      - name: Upload firmware artifact
+      # ==================================================
+      # 18. 上传 Artifact
+      # ==================================================
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: ImmortalWrt-25.12.1-N1
