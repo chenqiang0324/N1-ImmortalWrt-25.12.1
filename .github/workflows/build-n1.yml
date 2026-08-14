@@ -9,40 +9,56 @@ permissions:
 env:
   IMMORTALWRT_VERSION: "v25.12.1"
 
-  # N1 = Amlogic S905D
+  # ==========================================================
+  # Phicomm N1
+  # Amlogic S905D
+  # ==========================================================
   N1_BOARD: "s905d"
 
-  # ImmortalWrt 25.12.1 currently uses Linux 6.12.x.
-  # Let the source tree select the exact 6.12.x revision.
-  KERNEL_SERIES: "6.12.y"
-
+  # ==========================================================
+  # Network
+  # ==========================================================
   LAN_IP: "10.0.0.254"
   LAN_NETMASK: "255.255.255.0"
 
-  # N1 eMMC image size
-  OPENWRT_SIZE: "256/2048"
+  # ==========================================================
+  # ophub kernel
+  #
+  # 6.12.y + stable + auto=true
+  # means latest stable kernel in 6.12 series.
+  # ==========================================================
+  KERNEL_SERIES: "6.12.y"
+
+  # ==========================================================
+  # N1 eMMC image partitions
+  #
+  # BOOTFS / ROOTFS
+  # ==========================================================
+  IMAGE_SIZE: "256/2048"
+
 
 jobs:
 
   build:
 
-    name: Build ImmortalWrt 25.12.1 for Phicomm N1
+    name: N1 S905D ImmortalWrt 25.12.1
 
     runs-on: ubuntu-24.04
 
+
     steps:
 
-      # ==========================================================
-      # 1. Checkout workflow repository
-      # ==========================================================
+      # ========================================================
+      # 1. Checkout
+      # ========================================================
 
       - name: Checkout
         uses: actions/checkout@v4
 
 
-      # ==========================================================
+      # ========================================================
       # 2. Free disk space
-      # ==========================================================
+      # ========================================================
 
       - name: Free disk space
         run: |
@@ -55,9 +71,9 @@ jobs:
           df -h
 
 
-      # ==========================================================
-      # 3. Install dependencies
-      # ==========================================================
+      # ========================================================
+      # 3. Install build dependencies
+      # ========================================================
 
       - name: Install build dependencies
         run: |
@@ -99,20 +115,26 @@ jobs:
             device-tree-compiler
 
           echo
-          echo "Python:"
+          echo "=========================================="
+          echo "Build environment"
+          echo "=========================================="
+
           python3 --version
-
-          echo
-          echo "GCC:"
           gcc --version | head -1
+          clang --version | head -1
 
 
-      # ==========================================================
+      # ========================================================
       # 4. Clone ImmortalWrt 25.12.1
-      # ==========================================================
+      # ========================================================
 
       - name: Clone ImmortalWrt
         run: |
+
+          echo
+          echo "=========================================="
+          echo "Clone ImmortalWrt"
+          echo "=========================================="
 
           git clone \
             --depth=1 \
@@ -123,19 +145,19 @@ jobs:
           cd immortalwrt
 
           echo
-          echo "=========================================="
-          echo "ImmortalWrt version"
-          echo "=========================================="
-
+          echo "ImmortalWrt:"
           git describe --tags --always
+
+          echo
+          echo "Commit:"
           git rev-parse HEAD
 
 
-      # ==========================================================
-      # 5. Add third-party feeds
-      # ==========================================================
+      # ========================================================
+      # 5. Add third-party packages
+      # ========================================================
 
-      - name: Add third party feeds
+      - name: Add third party packages
         run: |
 
           cd immortalwrt
@@ -143,9 +165,9 @@ jobs:
           mkdir -p package/third-party
 
 
-          # ------------------------------------------------------
-          # DAED / PassWall2 / related packages
-          # ------------------------------------------------------
+          # ----------------------------------------------------
+          # DAED / PassWall2
+          # ----------------------------------------------------
 
           echo
           echo "Adding sbwml/openwrt_helloworld"
@@ -156,9 +178,9 @@ jobs:
             package/third-party/helloworld
 
 
-          # ------------------------------------------------------
+          # ----------------------------------------------------
           # Lucky
-          # ------------------------------------------------------
+          # ----------------------------------------------------
 
           echo
           echo "Adding Lucky"
@@ -169,12 +191,12 @@ jobs:
             package/third-party/lucky
 
 
-          # ------------------------------------------------------
+          # ----------------------------------------------------
           # Amlogic Treasure Box
-          # ------------------------------------------------------
+          # ----------------------------------------------------
 
           echo
-          echo "Adding Amlogic"
+          echo "Adding Amlogic Treasure Box"
 
           git clone \
             --depth=1 \
@@ -182,9 +204,9 @@ jobs:
             package/third-party/luci-app-amlogic
 
 
-          # ------------------------------------------------------
+          # ----------------------------------------------------
           # iStore
-          # ------------------------------------------------------
+          # ----------------------------------------------------
 
           echo
           echo "Adding iStore"
@@ -195,15 +217,14 @@ jobs:
             package/third-party/istore
 
 
-          # ------------------------------------------------------
-          # QuickFile
+          # ----------------------------------------------------
+          # sbwml extra packages
           #
-          # Use sbwml package collection.
-          # Do not use the old/non-existing repository path.
-          # ------------------------------------------------------
+          # Contains vlmcsd and other useful packages.
+          # ----------------------------------------------------
 
           echo
-          echo "Adding sbwml packages"
+          echo "Adding sbwml extra packages"
 
           git clone \
             --depth=1 \
@@ -211,104 +232,98 @@ jobs:
             package/third-party/sbwml
 
 
-      # ==========================================================
+      # ========================================================
       # 6. Update feeds
-      # ==========================================================
+      # ========================================================
 
       - name: Update feeds
         run: |
 
           cd immortalwrt
 
+          echo
+          echo "=========================================="
+          echo "Updating feeds"
+          echo "=========================================="
+
           ./scripts/feeds update -a
 
           ./scripts/feeds install -a
 
 
-      # ==========================================================
-      # 7. Check package availability
-      # ==========================================================
+      # ========================================================
+      # 7. Check package source availability
+      #
+      # IMPORTANT:
+      #
+      # We do NOT fail here.
+      #
+      # make defconfig is the real dependency resolver.
+      # ========================================================
 
-      - name: Check required packages
+      - name: Inspect requested packages
         run: |
 
           cd immortalwrt
 
           echo
           echo "=========================================="
-          echo "Checking required packages"
+          echo "Inspect requested packages"
           echo "=========================================="
 
 
-          PACKAGES="
-          luci-app-daed
-          luci-app-passwall2
-          lucky
-          luci-app-lucky
-          luci-app-store
-          luci-app-amlogic
-          tailscale
-          luci-app-tailscale-community
-          minidlna
-          luci-app-minidlna
-          ttyd
-          luci-app-ttyd
-          vlmcsd
-          luci-app-vlmcsd
-          luci-app-quickfile
-          luci-app-upnp
-          kmod-usb-storage
-          kmod-fs-ext4
-          kmod-fs-vfat
-          kmod-fs-exfat
-          block-mount
-          usbutils
-          curl
-          wget-ssl
-          htop
-          "
-
-
-          FAILED=0
-
-
-          for p in ${PACKAGES}; do
+          for p in \
+            daed \
+            luci-app-daed \
+            luci-app-passwall2 \
+            lucky \
+            luci-app-lucky \
+            luci-app-store \
+            luci-app-amlogic \
+            tailscale \
+            luci-app-tailscale-community \
+            minidlna \
+            luci-app-minidlna \
+            ttyd \
+            luci-app-ttyd \
+            vlmcsd \
+            luci-app-vlmcsd \
+            luci-app-quickfile \
+            luci-app-upnp \
+            kmod-usb-storage \
+            kmod-fs-ext4 \
+            kmod-fs-vfat \
+            kmod-fs-exfat \
+            block-mount \
+            usbutils \
+            curl \
+            wget-ssl \
+            htop
+          do
 
             echo
-            echo "Checking: ${p}"
+            echo "------------------------------------------"
+            echo "Package: ${p}"
+            echo "------------------------------------------"
 
-            FOUND=$(find package feeds -type f -name Makefile \
+            find package feeds \
+              -type f \
+              -name Makefile \
               -exec grep -l \
               -E "^Package/${p}([[:space:]]|$)|^PKG_NAME[[:space:]]*:?=[[:space:]]*${p}([[:space:]]|$)" \
-              {} + 2>/dev/null \
-              | head -1 || true)
-
-            if [ -n "${FOUND}" ]; then
-
-              echo "[ OK ] ${p}"
-              echo "       ${FOUND}"
-
-            else
-
-              echo "[WARN] ${p} was not found"
-
-            fi
+              {} + \
+              2>/dev/null \
+              | head -5 \
+              || true
 
           done
 
 
-          echo
-          echo "Package check completed."
+      # ========================================================
+      # 8. Create base .config
+      # ========================================================
 
-          # Do not fail here for optional third-party package names.
-          # make defconfig below is the final authority.
-
-
-      # ==========================================================
-      # 8. Create base configuration
-      # ==========================================================
-
-      - name: Create base configuration
+      - name: Create OpenWrt configuration
         run: |
 
           cd immortalwrt
@@ -337,7 +352,7 @@ jobs:
 
           #
           # ======================================================
-          # LuCI / Chinese
+          # LuCI
           # ======================================================
           #
 
@@ -345,6 +360,7 @@ jobs:
           CONFIG_PACKAGE_luci-base=y
           CONFIG_PACKAGE_luci-mod-admin-full=y
           CONFIG_PACKAGE_luci-theme-bootstrap=y
+
           CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
 
 
@@ -499,9 +515,9 @@ jobs:
           EOF
 
 
-      # ==========================================================
-      # 9. Resolve dependencies
-      # ==========================================================
+      # ========================================================
+      # 9. Resolve package dependencies
+      # ========================================================
 
       - name: Resolve package dependencies
         run: |
@@ -516,19 +532,20 @@ jobs:
           make defconfig V=s
 
 
-      # ==========================================================
-      # 10. Show final selected packages
-      # ==========================================================
+      # ========================================================
+      # 10. Verify final package selection
+      # ========================================================
 
-      - name: Show final configuration
+      - name: Verify package selection
         run: |
 
           cd immortalwrt
 
           echo
           echo "=========================================="
-          echo "Final selected packages"
+          echo "Final package selection"
           echo "=========================================="
+
 
           grep '^CONFIG_PACKAGE_' .config \
             | grep -E \
@@ -537,9 +554,9 @@ jobs:
             || true
 
 
-      # ==========================================================
-      # 11. Configure LAN IP
-      # ==========================================================
+      # ========================================================
+      # 11. Configure LAN
+      # ========================================================
 
       - name: Configure LAN
         run: |
@@ -562,22 +579,22 @@ jobs:
           chmod +x files/etc/uci-defaults/99-n1-network
 
 
-      # ==========================================================
-      # 12. DAED / eBPF kernel configuration
-      #
-      # IMPORTANT:
-      #
-      # We modify the kernel configuration fragment BEFORE
-      # building the kernel.
+      # ========================================================
+      # 12. Configure DAED kernel requirements
       #
       # We do NOT use:
       #
-      # target/linux/config
-      # target/linux/oldconfig
-      # target/linux/refresh
+      # make target/linux/config
+      # make target/linux/oldconfig
+      # make target/linux/refresh
       #
-      # Those caused the previous failures.
-      # ==========================================================
+      # These caused previous failures.
+      #
+      # Instead:
+      #
+      # modify the existing Linux 6.12 configuration fragment
+      # then run normal make defconfig.
+      # ========================================================
 
       - name: Configure DAED kernel support
         run: |
@@ -586,7 +603,7 @@ jobs:
 
           echo
           echo "=========================================="
-          echo "Locating Linux 6.12 configuration"
+          echo "Locating Linux kernel configuration"
           echo "=========================================="
 
 
@@ -601,10 +618,11 @@ jobs:
 
           if [ -z "${CONFIG_FILE}" ]; then
 
-            echo "ERROR: Linux 6.12 kernel config fragment was not found."
+            echo
+            echo "ERROR: Linux 6.12 kernel configuration fragment not found."
 
             echo
-            echo "Available kernel config files:"
+            echo "Available kernel configuration fragments:"
 
             find target/linux \
               -type f \
@@ -617,11 +635,41 @@ jobs:
           fi
 
 
+          echo
           echo "Using kernel config:"
           echo "${CONFIG_FILE}"
 
 
+          # ------------------------------------------------------
+          # Remove previous copies if this workflow is re-run
+          # ------------------------------------------------------
+
+          sed -i \
+            -e '/^CONFIG_BPF=y$/d' \
+            -e '/^CONFIG_BPF_SYSCALL=y$/d' \
+            -e '/^CONFIG_BPF_JIT=y$/d' \
+            -e '/^CONFIG_BPF_EVENTS=y$/d' \
+            -e '/^CONFIG_BPF_STREAM_PARSER=y$/d' \
+            -e '/^CONFIG_CGROUPS=y$/d' \
+            -e '/^CONFIG_KPROBES=y$/d' \
+            -e '/^CONFIG_KPROBE_EVENTS=y$/d' \
+            -e '/^CONFIG_NET_INGRESS=y$/d' \
+            -e '/^CONFIG_NET_EGRESS=y$/d' \
+            -e '/^CONFIG_NET_CLS_ACT=y$/d' \
+            -e '/^CONFIG_NET_CLS_BPF=m$/d' \
+            -e '/^CONFIG_NET_SCH_INGRESS=m$/d' \
+            -e '/^CONFIG_DEBUG_INFO=y$/d' \
+            -e '/^CONFIG_DEBUG_INFO_BTF=y$/d' \
+            -e '/^CONFIG_DEBUG_INFO_BTF_MODULES=y$/d' \
+            -e '/^# CONFIG_DEBUG_INFO_REDUCED is not set$/d' \
+            "${CONFIG_FILE}"
+
+
           cat >> "${CONFIG_FILE}" <<'EOF'
+
+          #
+          # DAED / eBPF support
+          #
 
           CONFIG_BPF=y
           CONFIG_BPF_SYSCALL=y
@@ -649,12 +697,12 @@ jobs:
 
 
           echo
-          echo "DAED kernel options added."
+          echo "DAED kernel configuration added."
 
 
-      # ==========================================================
-      # 13. Resolve kernel configuration
-      # ==========================================================
+      # ========================================================
+      # 13. Resolve kernel configuration normally
+      # ========================================================
 
       - name: Resolve kernel configuration
         run: |
@@ -663,16 +711,16 @@ jobs:
 
           echo
           echo "=========================================="
-          echo "Resolving final kernel configuration"
+          echo "Resolving kernel configuration"
           echo "=========================================="
 
 
           make defconfig V=s
 
 
-      # ==========================================================
-      # 14. Verify kernel configuration fragment
-      # ==========================================================
+      # ========================================================
+      # 14. Verify DAED kernel configuration
+      # ========================================================
 
       - name: Verify DAED kernel configuration
         run: |
@@ -681,7 +729,7 @@ jobs:
 
           echo
           echo "=========================================="
-          echo "Checking DAED kernel requirements"
+          echo "Verifying DAED kernel support"
           echo "=========================================="
 
 
@@ -695,53 +743,44 @@ jobs:
 
 
           if [ -z "${CONFIG_FILE}" ]; then
-            echo "ERROR: kernel config not found"
+
+            echo "ERROR: kernel config not found."
+
             exit 1
+
           fi
 
 
-          FAILED=0
-
-
-          check()
-          {
-            ITEM="$1"
-
-            if grep -q "^${ITEM}$" "${CONFIG_FILE}"; then
-
-              echo "[ OK ] ${ITEM}"
-
-            else
-
-              echo "[WARN] ${ITEM}"
-
-            fi
-          }
-
-
-          check "CONFIG_BPF=y"
-          check "CONFIG_BPF_SYSCALL=y"
-          check "CONFIG_BPF_JIT=y"
-          check "CONFIG_BPF_EVENTS=y"
-          check "CONFIG_BPF_STREAM_PARSER=y"
-          check "CONFIG_CGROUPS=y"
-          check "CONFIG_KPROBES=y"
-          check "CONFIG_KPROBE_EVENTS=y"
-          check "CONFIG_NET_INGRESS=y"
-          check "CONFIG_NET_EGRESS=y"
-          check "CONFIG_NET_CLS_ACT=y"
-          check "CONFIG_DEBUG_INFO=y"
-          check "CONFIG_DEBUG_INFO_BTF=y"
-          check "CONFIG_DEBUG_INFO_BTF_MODULES=y"
+          echo
+          echo "Kernel configuration:"
+          echo "${CONFIG_FILE}"
 
 
           echo
-          echo "Kernel configuration check finished."
+          echo "Requested options:"
 
 
-      # ==========================================================
+          grep -E \
+            '^CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|BPF_EVENTS|BPF_STREAM_PARSER|CGROUPS|KPROBES|KPROBE_EVENTS|NET_INGRESS|NET_EGRESS|NET_CLS_ACT|NET_CLS_BPF|NET_SCH_INGRESS|DEBUG_INFO|DEBUG_INFO_BTF|DEBUG_INFO_BTF_MODULES)=' \
+            "${CONFIG_FILE}" \
+            || true
+
+
+          echo
+          echo "Kernel series detected from source:"
+
+
+          grep -R \
+            'LINUX_VERSION' \
+            target/linux \
+            2>/dev/null \
+            | head -20 \
+            || true
+
+
+      # ========================================================
       # 15. Build ImmortalWrt
-      # ==========================================================
+      # ========================================================
 
       - name: Build ImmortalWrt
         run: |
@@ -750,25 +789,39 @@ jobs:
 
           echo
           echo "=========================================="
-          echo "Building ImmortalWrt"
+          echo "Building ImmortalWrt 25.12.1"
           echo "=========================================="
+
 
           make -j2 V=s
 
 
-      # ==========================================================
-      # 16. Locate rootfs tarball
-      # ==========================================================
+      # ========================================================
+      # 16. Verify build output
+      # ========================================================
 
-      - name: Locate rootfs
+      - name: Verify build output
         run: |
 
           cd immortalwrt
 
           echo
           echo "=========================================="
-          echo "Locating generic ARM64 rootfs"
+          echo "Build output"
           echo "=========================================="
+
+
+          find bin/targets \
+            -type f \
+            -print \
+            | sort
+
+
+          echo
+          echo "=========================================="
+          echo "Rootfs archives"
+          echo "=========================================="
+
 
           find bin/targets \
             -type f \
@@ -777,33 +830,11 @@ jobs:
             | sort
 
 
-          ROOTFS=$(find bin/targets \
-            -type f \
-            -name '*rootfs.tar.gz' \
-            | head -1)
-
-
-          if [ -z "${ROOTFS}" ]; then
-
-            echo
-            echo "ERROR: rootfs.tar.gz not found."
-
-            find bin/targets \
-              -type f \
-              -print \
-              | sort
-
-            exit 1
-
-          fi
-
-
-          echo "ROOTFS=${ROOTFS}" >> "${GITHUB_ENV}"
-
-
-      # ==========================================================
-      # 17. Upload generic ImmortalWrt build
-      # ==========================================================
+      # ========================================================
+      # 17. Upload generic ARM64 rootfs
+      #
+      # This is the input for ophub's packaging action.
+      # ========================================================
 
       - name: Upload generic ARM64 rootfs
         uses: actions/upload-artifact@v4
@@ -821,110 +852,102 @@ jobs:
           retention-days: 30
 
 
-      # ==========================================================
-      # 18. Clone ophub Amlogic packaging system
-      # ==========================================================
-
-      - name: Prepare Amlogic packaging
-        run: |
-
-          echo
-          echo "=========================================="
-          echo "Preparing ophub Amlogic packaging"
-          echo "=========================================="
-
-
-          git clone \
-            --depth=1 \
-            https://github.com/ophub/amlogic-s9xxx-openwrt.git \
-            amlogic-s9xxx-openwrt
-
-
-      # ==========================================================
-      # 19. Package N1 / S905D eMMC image
+      # ========================================================
+      # 18. Package N1 / S905D using ophub
       #
-      # This converts the generic armsr/armv8 rootfs into
-      # an Amlogic S905D image.
-      # ==========================================================
+      # IMPORTANT:
+      #
+      # ophub officially supports:
+      #
+      # s905d = Phicomm N1
+      #
+      # openwrt_path:
+      #   points directly to our generated rootfs.tar.gz
+      #
+      # openwrt_board:
+      #   s905d
+      #
+      # openwrt_kernel:
+      #   6.12.y
+      #
+      # auto_kernel:
+      #   true
+      #
+      # openwrt_ip:
+      #   10.0.0.254
+      #
+      # openwrt_size:
+      #   256/2048
+      # ========================================================
 
-      - name: Package N1 S905D image
-        run: |
+      - name: Package Phicomm N1 S905D eMMC firmware
+        id: package_n1
+        uses: ophub/amlogic-s9xxx-openwrt@main
 
-          echo
-          echo "=========================================="
-          echo "Packaging Phicomm N1 / S905D"
-          echo "=========================================="
+        with:
 
+          openwrt_path: "immortalwrt/bin/targets/**/**/*rootfs.tar.gz"
 
-          cd amlogic-s9xxx-openwrt
+          openwrt_board: "s905d"
 
+          kernel_repo: "ophub/kernel"
 
-          ROOTFS="../${ROOTFS}"
+          kernel_usage: "stable"
 
+          openwrt_kernel: "6.12.y"
 
-          echo
-          echo "Rootfs:"
-          echo "${ROOTFS}"
+          auto_kernel: "true"
 
+          openwrt_ip: "10.0.0.254"
 
-          if [ ! -f "${ROOTFS}" ]; then
+          openwrt_size: "256/2048"
 
-            echo
-            echo "ERROR: rootfs file does not exist."
-
-            exit 1
-
-          fi
+          builder_name: "N1-ImmortalWrt-25.12.1"
 
 
-          echo
-          echo "Running ophub packaging."
-
-
-          sudo ./remake \
-            -b s905d \
-            -k 6.12.y \
-            -u stable \
-            -a true \
-            -p "${LAN_IP}" \
-            -s "${OPENWRT_SIZE}" \
-            -n "N1-ImmortalWrt-25.12.1"
-
-
-      # ==========================================================
-      # 20. Show N1 firmware
-      # ==========================================================
+      # ========================================================
+      # 19. Show ophub output
+      # ========================================================
 
       - name: Show N1 firmware
         run: |
 
           echo
           echo "=========================================="
-          echo "N1 firmware output"
+          echo "ophub packaging output"
           echo "=========================================="
 
 
-          find amlogic-s9xxx-openwrt/out \
-            -type f \
-            -print \
-            2>/dev/null \
-            | sort
+          if [ -d "out" ]; then
+
+            find out \
+              -type f \
+              -print \
+              | sort
+
+          else
+
+            echo "ERROR: ophub output directory not found."
+
+            exit 1
+
+          fi
 
 
-      # ==========================================================
-      # 21. Upload N1 eMMC firmware
-      # ==========================================================
+      # ========================================================
+      # 20. Upload N1 firmware
+      # ========================================================
 
-      - name: Upload N1 firmware
+      - name: Upload N1 eMMC firmware
         uses: actions/upload-artifact@v4
 
         with:
 
-          name: ImmortalWrt-25.12.1-N1-S905D-eMMC
+          name: ImmortalWrt-25.12.1-N1-S905D-eMMC-10.0.0.254
 
           path: |
 
-            amlogic-s9xxx-openwrt/out/**
+            out/**
 
           if-no-files-found: error
 
